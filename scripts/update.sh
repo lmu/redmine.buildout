@@ -1,5 +1,8 @@
+# -*- coding: utf-8 -*-
 #!/bin/bash
 
+export GEM_HOME=
+export PATH=$GEM_HOME/bin:$PATH
 export RAILS_ENV=production 
 export REDMINE_LANG=en
 

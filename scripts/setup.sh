@@ -1,7 +1,13 @@
 #!/bin/bash
 
+export GEM_HOME=
+export PATH=$GEM_HOME/bin:$PATH
 export RAILS_ENV=production 
 export REDMINE_LANG=en
+
+svn co http://svn.redmine.org/redmine/branches/2.5-stable .
+svn up
+
 
 bundle install --without development test rmagick
 
@@ -10,8 +16,6 @@ rake db:drop
 #psql -h 10.153.101.205 -c "CREATE DATABASE redmine_livetest WITH ENCODING='UTF8' OWNER=redmine;" --user=redmine --password
 createdb redmine_livetest --h 10.153.101.205 -U redmine -W -O redmine -E UTF8
 
-svn co http://svn.redmine.org/redmine/branches/2.4-stable .
-svn up
 
 rm -fR plugins/*/
 rm -fR public/themes/*/
