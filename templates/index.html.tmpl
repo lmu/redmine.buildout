@@ -1,0 +1,14 @@
+
+<html>
+	<head>
+		
+	</head>
+	<body>
+		<h1>SCM der Verwaltung der Ludwig-Maqximilians-Universität München</h1>
+		<ul>
+			{% for instance in options.instances %}
+			<li><a href="${instance.suburi}">${instance.suburi}</a></li>
+			{% end %}
+		</ul>
+	</body>
+</html>
