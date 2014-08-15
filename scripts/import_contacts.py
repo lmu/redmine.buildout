@@ -27,13 +27,17 @@ def import_contacts(file_path):
     custom_fields = redmine.custom_field.all()
     cf_campus_kennung_id = None
     cf_fiona_gruppe_id = None
+    cf_anrede_id = None
 
     for cf in custom_fields:
         if cf.name == "Campus-Kennung":
             cf_campus_kennung_id = cf.id
-        elif cf.name == "Zugeteilte Fionagruppe":
+        elif cf.name == "Fionagruppe":
             cf_fiona_gruppe_id = cf.id
-
+        elif cf.name == "Status":
+            cf_status_id = cf.id
+        elif cf.name == "Anrede":
+            cf_anrede_id = cf.id
 
 
 
@@ -69,8 +73,10 @@ def import_contacts(file_path):
                         'country_code' : row.get('Country', '') ,
                     }, 
                     custom_fields  = [
-                        { 'id': cf_campus_kennung_id, 'value' : row.get('Campus Kennung', '') },
-                        { 'id': cf_fiona_gruppe_id,   'value' : row.get('Zugeteilte Fionagruppe', '') }
+                        { 'id': cf_campus_kennung_id, 'value' : row.get('Campus_Kennung', '') },
+                        { 'id': cf_fiona_gruppe_id,   'value' : row.get('Zugeteilte Fionagruppe', '') },
+                        { 'id': cf_status_id,         'value' : row.get('Status', '') },
+                        { 'id': cf_anrede_id,         'value' : row.get('Anrede', '') }
                     ], 
                     visibility = 0,
                     )
