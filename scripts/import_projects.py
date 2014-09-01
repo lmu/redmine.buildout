@@ -17,7 +17,7 @@ import csv
 import os.path
 
 
-def import_projects(file_path):
+def connect_projects_with_user(file_path):
     print file_path
 
     redmine = Redmine('http://localhost/spielwiese/', username='admin', password='admin')
@@ -26,17 +26,17 @@ def import_projects(file_path):
     master_project = 'webauftritte'
 
     custom_fields = redmine.custom_field.all()
-    cf_campus_kennung_id = None
+    cf_lang_id = None
+    cf_status_id = None
     cf_fiona_gruppe_id = None
-    cf_anrede_id = None
 
     for cf in custom_fields:
         if cf.name == "Sprache":
             cf_lang_id = cf.id
-        elif cf.name == "Fionagruppen":
-            cf_fiona_gruppe_id = cf.id
         elif cf.name == "Status":
             cf_status_id = cf.id
+        elif cf.name == "Fionagruppen":
+            cf_fiona_gruppe_id = cf.id
 
     with open(file_path, 'rb') as csvfile:
         reader = csv.DictReader(csvfile, delimiter=';', quotechar='"')
@@ -56,7 +56,20 @@ def import_projects(file_path):
 
             path_list = path.split('/')
             try:
-                if len(path_list) == 2:
+                if redmine.project.get(fiona_id):
+                    myproject = redmine.project.get(fiona_id)
+                    redmine.project.update(myproject.id,
+                                           name=fiona_title
+                                           homepage=url,
+                                           is_public=False, 
+                                           inherit_members=True, 
+                                           # Custom Fields
+                                           custom_fields  = [
+                                               { 'id': cf_status_id, 'value' : row.get('Status', '') },
+                                               { 'id': cf_lang_id,   'value' : row.get('Sprache', '') }
+                                           ], 
+                                          )
+                elif and len(path_list) == 2:
                     project = redmine.project.create(name=fiona_title, 
                                                      identifier=fiona_id, 
                                                      homepage=url,
@@ -83,6 +96,8 @@ def import_projects(file_path):
                                                { 'id': cf_lang_id,   'value' : row.get('Sprache', '') }
                                            ], 
                                           )
+
+
             except ValidationError, e:
                 print "Error on {id} with error: {message}".format(id=fiona_id, message=e.message)
         
