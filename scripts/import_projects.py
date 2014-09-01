@@ -16,29 +16,76 @@ from redmine.exceptions import ValidationError
 import csv
 import os.path
 
+
 def import_projects(file_path):
     print file_path
 
     redmine = Redmine('http://localhost/spielwiese/', username='admin', password='admin')
 
+    #master-Project
+    master_project = 'webauftritte'
+
+    custom_fields = redmine.custom_field.all()
+    cf_campus_kennung_id = None
+    cf_fiona_gruppe_id = None
+    cf_anrede_id = None
+
+    for cf in custom_fields:
+        if cf.name == "Sprache":
+            cf_lang_id = cf.id
+        elif cf.name == "Fionagruppen":
+            cf_fiona_gruppe_id = cf.id
+        elif cf.name == "Status":
+            cf_status_id = cf.id
 
     with open(file_path, 'rb') as csvfile:
-        reader = csv.reader(csvfile, delimiter=';', quotechar='"')
+        reader = csv.DictReader(csvfile, delimiter=';', quotechar='"')
+
+        #Fiona-Name;Fiona-Pfad;Playland-Titel;Erstellungsdatum;Status;URL;Sprache;Fionagruppe;
+
         project = 0
         for row in reader:
-            path = row[0]
-            fiona_id = row[1]
-            fiona_title = row[2]
-            release_date = row[3]
+
+            fiona_id = row.get('Fiona-Name')
+            path = row.get('Fiona-Pfad')
+            fiona_title = row.get('Playland-Titel')
+            url = row.get('URL')
+            # Custom Fields
+            status = row.get('Status')
+            lang = row.get('Sprache')
+
             path_list = path.split('/')
             try:
                 if len(path_list) == 2:
-                    project = redmine.project.create(name=fiona_title, identifier=fiona_id, is_public=False, inherit_members=True)
+                    project = redmine.project.create(name=fiona_title, 
+                                                     identifier=fiona_id, 
+                                                     homepage=url,
+                                                     is_public=False, 
+                                                     inherit_members=True, 
+                                                     parent_id=redmine.project.get(master_project),
+                                                     # Custom Fields
+                                                     custom_fields  = [
+                                                         { 'id': cf_status_id, 'value' : row.get('Status', '') },
+                                                         { 'id': cf_lang_id,   'value' : row.get('Sprache', '') }
+                                                     ], 
+                                                    )
                 elif len(path_list) == 3:
                     parent_project = redmine.project.get(path_list[1])
-                    redmine.project.create(name=fiona_title, identifier=fiona_id, is_public=False, inherit_members=True, parent_id=parent_project.id)
+                    redmine.project.create(name=fiona_title, 
+                                           identifier=fiona_id, 
+                                           homepage=url,
+                                           is_public=False, 
+                                           inherit_members=True, 
+                                           parent_id=parent_project.id,
+                                           # Custom Fields
+                                           custom_fields  = [
+                                               { 'id': cf_status_id, 'value' : row.get('Status', '') },
+                                               { 'id': cf_lang_id,   'value' : row.get('Sprache', '') }
+                                           ], 
+                                          )
             except ValidationError, e:
                 print "Error on {id} with error: {message}".format(id=fiona_id, message=e.message)
+        
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
