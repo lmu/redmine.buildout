@@ -127,7 +127,7 @@ h1. Fionagruppen
                     print "Error on {id} with error: {message}".format(id=fiona_id, message=e.message)
                 except ResourceNotFoundError, e:
                     pass
-        if len(error_store.keys()):
+        if error_store:
             error_message = """Folgende User sind unbekannt:
 
 |_.Campus-Kennung |_.Fionagruppen |_.Projekte |
