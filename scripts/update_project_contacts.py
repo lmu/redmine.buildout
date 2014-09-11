@@ -15,6 +15,7 @@ from redmine.exceptions import ResourceNotFoundError
 from redmine.exceptions import ValidationError
 
 import csv
+import datetime
 import os.path
 
 
@@ -126,21 +127,22 @@ h1. Fionagruppen
                     print "Error on {id} with error: {message}".format(id=fiona_id, message=e.message)
                 except ResourceNotFoundError, e:
                     pass
-        error_message = """Folgende User sind unbekannt:
-        |_.Campus-Kennung |_.Fionagruppen | Projekte |
-        """
-        for message in error_store:
-            import ipdb; ipdb.set_trace()
-            error_message += '| {ck} | {groups} | {projects} |'.format(
-                ck=message.key, 
-                groups=str(set(message.values()['Group'])), 
-                projects=str(set(message.values()['Webauftritt']) ) ) 
+        if len(error_store.keys()):
+            error_message = """Folgende User sind unbekannt:
 
-        redmine.issue.create(
-            project_id=redmine.project.get('webprojekte').id,
-            subject="Unbekannte Nutzer bei Import " + datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
-            description=error_message
-            )
+|_.Campus-Kennung |_.Fionagruppen |_.Projekte |
+"""
+            for message in error_store:
+                error_message += '| {ck} | {groups} | {projects} |\n'.format(
+                    ck=message, 
+                    groups=', '.join(set(error_store[message]['Group'])), 
+                    projects=', '.join(set(error_store[message]['Webauftritt']) ) ) 
+
+            redmine.issue.create(
+                project_id=redmine.project.get('webprojekte').id,
+                subject="Unbekannte Nutzer bei Import " + datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
+                description=error_message
+                )
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
