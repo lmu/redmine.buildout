@@ -11,19 +11,21 @@ sys.path[0:0] = [
     ]
 
 from redmine import Redmine
+from redmine.exceptions import ResourceNotFoundError
 from redmine.exceptions import ValidationError
 
 import csv
 import os.path
 
 
-def connect_projects_with_user(file_path):
+def import_projects(file_path):
     print file_path
 
-    redmine = Redmine('http://localhost/spielwiese/', username='admin', password='admin')
+    #redmine = Redmine('https://www.scm.verwaltung.uni-muenchen.de/internetdienste/', username='admin', password='admin')
+    redmine = Redmine('http://localhost/internetdienste/', username='admin', password='admin')
 
     #master-Project
-    master_project = 'webauftritte'
+    master_project = 'webprojekte'
 
     custom_fields = redmine.custom_field.all()
     cf_lang_id = None
@@ -44,9 +46,16 @@ def connect_projects_with_user(file_path):
         #Fiona-Name;Fiona-Pfad;Playland-Titel;Erstellungsdatum;Status;URL;Sprache;Fionagruppe;
 
         project = 0
+        all_projects = redmine.project.all()
+        rmaster_project = redmine.project.get(master_project)
+
+        #import ipdb; ipdb.set_trace()
         for row in reader:
 
             fiona_id = row.get('Fiona-Name')
+
+            print "Write Project: " + fiona_id
+
             path = row.get('Fiona-Pfad')
             fiona_title = row.get('Playland-Titel')
             url = row.get('URL')
@@ -56,10 +65,10 @@ def connect_projects_with_user(file_path):
 
             path_list = path.split('/')
             try:
-                if redmine.project.get(fiona_id):
+                try:
                     myproject = redmine.project.get(fiona_id)
                     redmine.project.update(myproject.id,
-                                           name=fiona_title
+                                           name=fiona_title,
                                            homepage=url,
                                            is_public=False, 
                                            inherit_members=True, 
@@ -69,38 +78,38 @@ def connect_projects_with_user(file_path):
                                                { 'id': cf_lang_id,   'value' : row.get('Sprache', '') }
                                            ], 
                                           )
-                elif and len(path_list) == 2:
-                    project = redmine.project.create(name=fiona_title, 
-                                                     identifier=fiona_id, 
-                                                     homepage=url,
-                                                     is_public=False, 
-                                                     inherit_members=True, 
-                                                     parent_id=redmine.project.get(master_project),
-                                                     # Custom Fields
-                                                     custom_fields  = [
-                                                         { 'id': cf_status_id, 'value' : row.get('Status', '') },
-                                                         { 'id': cf_lang_id,   'value' : row.get('Sprache', '') }
-                                                     ], 
-                                                    )
-                elif len(path_list) == 3:
-                    parent_project = redmine.project.get(path_list[1])
-                    redmine.project.create(name=fiona_title, 
-                                           identifier=fiona_id, 
-                                           homepage=url,
-                                           is_public=False, 
-                                           inherit_members=True, 
-                                           parent_id=parent_project.id,
-                                           # Custom Fields
-                                           custom_fields  = [
-                                               { 'id': cf_status_id, 'value' : row.get('Status', '') },
-                                               { 'id': cf_lang_id,   'value' : row.get('Sprache', '') }
-                                           ], 
-                                          )
-
+                except ResourceNotFoundError, e:
+                    if len(path_list) == 2:
+                        project = redmine.project.create(name=fiona_title, 
+                                                         identifier=fiona_id, 
+                                                         homepage=url,
+                                                         is_public=False, 
+                                                         inherit_members=True, 
+                                                         parent_id=rmaster_project.id,
+                                                         # Custom Fields
+                                                         custom_fields  = [
+                                                             { 'id': cf_status_id, 'value' : row.get('Status', '') },
+                                                             { 'id': cf_lang_id,   'value' : row.get('Sprache', '') }
+                                                         ], 
+                                                        )
+                    elif len(path_list) == 3:
+                        parent_project = redmine.project.get(path_list[1])
+                        redmine.project.create(name=fiona_title, 
+                                               identifier=fiona_id, 
+                                               homepage=url,
+                                               is_public=False, 
+                                               inherit_members=True, 
+                                               parent_id=parent_project.id,
+                                               # Custom Fields
+                                               custom_fields  = [
+                                                   { 'id': cf_status_id, 'value' : row.get('Status', '') },
+                                                   { 'id': cf_lang_id,   'value' : row.get('Sprache', '') }
+                                               ], 
+                                              )
 
             except ValidationError, e:
                 print "Error on {id} with error: {message}".format(id=fiona_id, message=e.message)
-        
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

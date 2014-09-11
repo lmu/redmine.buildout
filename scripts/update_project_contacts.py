@@ -11,6 +11,7 @@ sys.path[0:0] = [
     ]
 
 from redmine import Redmine
+from redmine.exceptions import ResourceNotFoundError
 from redmine.exceptions import ValidationError
 
 import csv
@@ -20,38 +21,129 @@ import os.path
 def connect_projects_with_user(file_path):
     print file_path
 
-    redmine = Redmine('http://localhost/spielwiese/', username='admin', password='admin')
+    #redmine = Redmine('https://www.scm.verwaltung.uni-muenchen.de/internetdienste/', username='admin', password='admin')
+    redmine = Redmine('http://localhost/internetdienste/', username='admin', password='admin')
 
     custom_fields = redmine.custom_field.all()
+    cf_campus_kennung_id = None
     cf_fiona_gruppe_id = None
+    cf_anrede_id = None
+    cf_activ_id = None
+    cf_inactiv_id = None
 
     for cf in custom_fields:
-        if cf.name == "Fionagruppen":
+        if cf.name == "Campus-Kennung":
+            cf_campus_kennung_id = cf.id
+        elif cf.name == "Status":
+            cf_status_id = cf.id
+        elif cf.name == "Anrede":
+            cf_anrede_id = cf.id
+        elif cf.name == "Fiona aktiviert":
+            cf_activ_id = cf.id
+        elif cf.name == "Fiona deaktiviert":
+            cf_inactiv_id = cf.id
+        elif cf.name == "Fionagruppen":
             cf_fiona_gruppe_id = cf.id
+
+    _all_contacts = redmine.contact.all()
+    all_contacts = {}
+    for contact in _all_contacts:
+        fields = contact.custom_fields
+        ck = 'keine_'+contact.last_name.lower()
+        for field in fields:
+            if field.name == 'Campus-Kennung':
+                ck = field.value.strip().lower()
+        print "add {user} to all_contacts".format(user=ck)
+        all_contacts[ck] = contact
 
     with open(file_path, 'rb') as csvfile:
         reader = csv.DictReader(csvfile, delimiter=';', quotechar='"')
+
+        error_store = {}
 
         #Fiona-Name;Fiona-Pfad;Playland-Titel;Erstellungsdatum;Status;URL;Sprache;Fionagruppe;
 
         project = 0
         for row in reader:
-
+            #import ipdb; ipdb.set_trace()
             fiona_id = row.get('Fiona-Name')
             user_data = row.get('Fionagruppe')
 
-            groups = user_data.split('#')
+            print "update Project: " + fiona_id
 
-            
+            if user_data != None:
+                try:
+                    project = redmine.project.get(fiona_id)
+                    content = """
+h1. Fionagruppen
 
-            try:
-                
-            except ValidationError, e:
-                print "Error on {id} with error: {message}".format(id=fiona_id, message=e.message)
-        
+
+"""
+
+
+
+                    groups = user_data.split('#')
+
+                    for group in groups:
+                        if group != '':
+                            group_data = group.split(':')
+                            group_name = group_data[0]
+                            user_ids = group_data[1].split(' ')
+
+                            content += "\n\nh2. " + group_name + "\n\n"
+                            for user in user_ids:
+                                #contact = redmine.contact.get()
+                                if user != '':
+                                    contact = all_contacts.get(user.lower())
+
+                                    if contact != None:
+
+                                        content += "* {{contact(%s)}}: %s \n" % (contact.id, user)
+                                    else:
+                                        content += "* " + user + "\n"
+                                        error_message = error_store.get(user,{})
+                                        e_webauftritt = error_message.get('Webauftritt', [])
+                                        e_webauftritt.append(project.identifier)
+                                        e_group = error_message.get('Group',[])
+                                        e_group.append(group_name)
+
+                                        error_store[user] = {'Webauftritt': e_webauftritt, 'Group': e_group}
+
+
+                    try: 
+                        page = redmine.wiki_page.get('Fionagruppen',project_id=project.id)
+                        redmine.wiki_page.update('Fionagruppen',
+                                                 project_id=project.id,
+                                                 title='Fionagruppen',
+                                                 text=content)
+                    except ResourceNotFoundError, e:
+                        redmine.wiki_page.create(project_id=project.id,
+                                                 title='Fionagruppen',
+                                                 text=content)
+
+
+                except ValidationError, e:
+                    print "Error on {id} with error: {message}".format(id=fiona_id, message=e.message)
+                except ResourceNotFoundError, e:
+                    pass
+        error_message = """Folgende User sind unbekannt:
+        |_.Campus-Kennung |_.Fionagruppen | Projekte |
+        """
+        for message in error_store:
+            import ipdb; ipdb.set_trace()
+            error_message += '| {ck} | {groups} | {projects} |'.format(
+                ck=message.key, 
+                groups=str(set(message.values()['Group'])), 
+                projects=str(set(message.values()['Webauftritt']) ) ) 
+
+        redmine.issue.create(
+            project_id=redmine.project.get('webprojekte').id,
+            subject="Unbekannte Nutzer bei Import " + datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
+            description=error_message
+            )
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         file_param = sys.argv[1]
         file_path = os.path.abspath(file_param)
-        import_projects(file_path)
+        connect_projects_with_user(file_path)
