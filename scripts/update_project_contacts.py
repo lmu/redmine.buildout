@@ -1,13 +1,13 @@
-#!/usr/local/Plone/Python-2.7/bin/python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import sys
 sys.path[0:0] = [
-    '/usr/local/Plone/redmine.buildout/src/python-redmine',
-    '/usr/local/Plone/redmine.buildout/src/python-redminecrm',
-    '/usr/local/Plone/buildout-cache/eggs/ipython-1.2.1-py2.7.egg',
-    '/usr/local/Plone/buildout-cache/eggs/ipdb-0.8-py2.7.egg',
-    '/usr/local/Plone/buildout-cache/eggs/requests-2.3.0-py2.7.egg',
+    '/data/redmine.buildout/src/python-redmine',
+    '/data/redmine.buildout/src/python-redminecrm',
+    '/data/redmine.buildout/eggs/ipython-1.2.1-py2.6.egg',
+    '/data/redmine.buildout/eggs/ipdb-0.8-py2.6.egg',
+    '/data/redmine.buildout/eggs/requests-2.3.0-py2.6.egg',
     ]
 
 from redmine import Redmine
@@ -22,8 +22,8 @@ import os.path
 def connect_projects_with_user(file_path):
     print file_path
 
-    #redmine = Redmine('https://www.scm.verwaltung.uni-muenchen.de/internetdienste/', username='admin', password='admin')
-    redmine = Redmine('http://localhost/internetdienste/', username='admin', password='admin')
+    redmine = Redmine('https://www.scm.verwaltung.uni-muenchen.de/internetdienste/', username='admin', password='admin',requests={'verify': False})
+    #redmine = Redmine('http://localhost/internetdienste/', username='admin', password='admin')
 
     custom_fields = redmine.custom_field.all()
     cf_campus_kennung_id = None
@@ -137,11 +137,18 @@ h1. Fionagruppen
                     ck=message, 
                     groups=', '.join(set(error_store[message]['Group'])), 
                     projects=', '.join(set(error_store[message]['Webauftritt']) ) ) 
-
+            support_project = redmine.project.get('support')
+            teams = redmine.group.all()
+            support_team = None
+            for team in teams:
+                if team.name == 'Support':
+                    support_team = team
+                    break
             redmine.issue.create(
-                project_id=redmine.project.get('webprojekte').id,
+                project_id=support_project.id,
                 subject="Unbekannte Nutzer bei Import " + datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
-                description=error_message
+                description=error_message,
+                assigned_to_id=support_team.id
                 )
 
 if __name__ == "__main__":

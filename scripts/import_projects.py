@@ -1,13 +1,13 @@
-#!/usr/local/Plone/Python-2.7/bin/python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import sys
 sys.path[0:0] = [
-    '/usr/local/Plone/redmine.buildout/src/python-redmine',
-    '/usr/local/Plone/redmine.buildout/src/python-redminecrm',
-    '/usr/local/Plone/buildout-cache/eggs/ipython-1.2.1-py2.7.egg',
-    '/usr/local/Plone/buildout-cache/eggs/ipdb-0.8-py2.7.egg',
-    '/usr/local/Plone/buildout-cache/eggs/requests-2.3.0-py2.7.egg',
+    '/data/redmine.buildout/src/python-redmine',
+    '/data/redmine.buildout/src/python-redminecrm',
+    '/data/redmine.buildout/eggs/ipython-1.2.1-py2.6.egg',
+    '/data/redmine.buildout/eggs/ipdb-0.8-py2.6.egg',
+    '/data/redmine.buildout/eggs/requests-2.3.0-py2.6.egg',
     ]
 
 from redmine import Redmine
@@ -21,8 +21,8 @@ import os.path
 def import_projects(file_path):
     print file_path
 
-    #redmine = Redmine('https://www.scm.verwaltung.uni-muenchen.de/internetdienste/', username='admin', password='admin')
-    redmine = Redmine('http://localhost/internetdienste/', username='admin', password='admin')
+    redmine = Redmine('https://www.scm.verwaltung.uni-muenchen.de/internetdienste/', username='admin', password='admin',requests={'verify': False})
+    #redmine = Redmine('http://localhost/internetdienste/', username='admin', password='admin')
 
     #master-Project
     master_project = 'webprojekte'
