@@ -4,11 +4,10 @@
 import sys
 sys.path[0:0] = [
     '/data/redmine.buildout/src/python-redmine',
-    '/data/redmine.buildout/src/python-redminecrm',
     '/data/redmine.buildout/eggs/ipython-1.2.1-py2.6.egg',
     '/data/redmine.buildout/eggs/ipdb-0.8-py2.6.egg',
     '/data/redmine.buildout/eggs/requests-2.3.0-py2.6.egg',
-    ]
+]
 
 from redmine import Redmine
 from redmine.exceptions import ResourceNotFoundError
@@ -22,29 +21,12 @@ import os.path
 def connect_projects_with_user(file_path):
     print file_path
 
-    redmine = Redmine('https://www.scm.verwaltung.uni-muenchen.de/internetdienste/', username='admin', password='admin',requests={'verify': False})
-    #redmine = Redmine('http://localhost/internetdienste/', username='admin', password='admin')
-
-    custom_fields = redmine.custom_field.all()
-    cf_campus_kennung_id = None
-    cf_fiona_gruppe_id = None
-    cf_anrede_id = None
-    cf_activ_id = None
-    cf_inactiv_id = None
-
-    for cf in custom_fields:
-        if cf.name == "Campus-Kennung":
-            cf_campus_kennung_id = cf.id
-        elif cf.name == "Status":
-            cf_status_id = cf.id
-        elif cf.name == "Anrede":
-            cf_anrede_id = cf.id
-        elif cf.name == "Fiona aktiviert":
-            cf_activ_id = cf.id
-        elif cf.name == "Fiona deaktiviert":
-            cf_inactiv_id = cf.id
-        elif cf.name == "Fionagruppen":
-            cf_fiona_gruppe_id = cf.id
+    redmine = Redmine(
+        'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
+        #'http://localhost/internetdienste/',
+        username='admin',
+        password='admin',
+        requests={'verify': False})
 
     _all_contacts = redmine.contact.all()
     all_contacts = {}
@@ -72,7 +54,7 @@ def connect_projects_with_user(file_path):
 
             print "update Project: " + fiona_id
 
-            if user_data != None:
+            if not user_data:
                 try:
                     project = redmine.project.get(fiona_id)
                     content = """
@@ -80,8 +62,6 @@ h1. Fionagruppen
 
 
 """
-
-
 
                     groups = user_data.split('#')
 
@@ -97,12 +77,12 @@ h1. Fionagruppen
                                 if user != '':
                                     contact = all_contacts.get(user.lower())
 
-                                    if contact != None:
+                                    if not contact:
 
                                         content += "* {{contact(%s)}}: %s \n" % (contact.id, user)
                                     else:
                                         content += "* " + user + "\n"
-                                        error_message = error_store.get(user,{})
+                                        error_message = error_store.get(user, {})
                                         e_webauftritt = error_message.get('Webauftritt', [])
                                         e_webauftritt.append(project.identifier)
                                         e_group = error_message.get('Group',[])
@@ -110,8 +90,7 @@ h1. Fionagruppen
 
                                         error_store[user] = {'Webauftritt': e_webauftritt, 'Group': e_group}
 
-
-                    try: 
+                    try:
                         page = redmine.wiki_page.get('Fionagruppen',project_id=project.id)
                         redmine.wiki_page.update('Fionagruppen',
                                                  project_id=project.id,
@@ -134,9 +113,9 @@ h1. Fionagruppen
 """
             for message in error_store:
                 error_message += '| {ck} | {groups} | {projects} |\n'.format(
-                    ck=message, 
-                    groups=', '.join(set(error_store[message]['Group'])), 
-                    projects=', '.join(set(error_store[message]['Webauftritt']) ) ) 
+                    ck=message,
+                    groups=', '.join(set(error_store[message]['Group'])),
+                    projects=', '.join(set(error_store[message]['Webauftritt'])))
             support_project = redmine.project.get('support')
             teams = redmine.group.all()
             support_team = None
@@ -146,10 +125,10 @@ h1. Fionagruppen
                     break
             redmine.issue.create(
                 project_id=support_project.id,
-                subject="Unbekannte Nutzer bei Import " + datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
+                subject="Unbekannte Nutzer bei Import " +
+                        datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
                 description=error_message,
-                assigned_to_id=support_team.id
-                )
+                assigned_to_id=support_team.id)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

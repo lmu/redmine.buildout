@@ -36,7 +36,8 @@ ggf.
 * redmine-plugins-download
 * redmine-themes-download
 
-.. code_block:: bash  
+.. code:: bash  
+
     git clone https://github.com/loechel/redmine.buildout.git
 
 
@@ -49,7 +50,8 @@ Nacharbeiten
 SLES11SP3
 ---------
 
-.. code_block:: bash
+.. code:: bash
+
     chown -R wwwdata:www .
 
 
