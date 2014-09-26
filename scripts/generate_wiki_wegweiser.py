@@ -14,7 +14,7 @@ import ipdb
 from redmine import Redmine
 #from redmine.exceptions import ResourceNotFoundError
 #from redmine.exceptions import ResourceAttrError
-from redmine.exceptions import UnknownError
+#from redmine.exceptions import UnknownError
 from redmine.exceptions import ValidationError
 
 
@@ -52,12 +52,13 @@ def generate_wiki_wegweiser():
 
     for project_id, project, project_identifier, project_name in all_projects:
         try:
-            content = '[[Fionagruppen]]' if isWebproject(project) \
-                else 'Bitte [[wegweiser]] aufbauen'
-            print u"Try to update Project: [{id}] {identifier}: {name} - write {content}".format(
+            print u"Try to update Project: [{id}] {identifier}: {name}".format(
                 id=project_id,
                 identifier=project_identifier,
-                name=project_name,
+                name=project_name)
+            content = '[[Fionagruppen]]' if isWebproject(project) \
+                else 'Bitte [[wegweiser]] aufbauen'
+            print u"write: {content}".format(
                 content=content)
             redmine.wiki_page.create(project_id=project_id,
                                      title='wegweiser',

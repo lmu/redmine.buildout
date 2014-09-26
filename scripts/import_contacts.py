@@ -1,12 +1,22 @@
 #!/usr/bin/env python
 
 import sys
-sys.path[0:0] = [
-    '/data/redmine.buildout/src/python-redmine',
-    '/data/redmine.buildout/src/python-redminecrm',
-    '/data/redmine.buildout/eggs/ipython-1.2.1-py2.6.egg',
-    '/data/redmine.buildout/eggs/ipdb-0.8-py2.6.egg',
-    '/data/redmine.buildout/eggs/requests-2.3.0-py2.6.egg',
+import socket
+
+hostname = socket.gethostname()
+if hostname == 'Pumukel-GNU-Tablet':
+    sys.path[0:0] = [
+        '/usr/local/Plone/redmine.buildout/src/python-redmine',
+        '/usr/local/Plone/buildout-cache/eggs/ipython-1.2.1-py2.7.egg',
+        '/usr/local/Plone/buildout-cache/eggs/ipdb-0.8-py2.7.egg',
+        '/usr/local/Plone/buildout-cache/eggs/requests-2.3.0-py2.7.egg',
+    ]
+elif hostname == 'redmine1':
+    sys.path[0:0] = [
+        '/data/redmine.buildout/src/python-redmine',
+        '/data/redmine.buildout/eggs/ipython-1.2.1-py2.6.egg',
+        '/data/redmine.buildout/eggs/ipdb-0.8-py2.6.egg',
+        '/data/redmine.buildout/eggs/requests-2.3.0-py2.6.egg',
     ]
 
 from redmine import Redmine
@@ -22,15 +32,20 @@ import datetime
 
 import ipdb
 
+
 def import_contacts(file_path):
     print file_path
 
-    redmine = Redmine('https://www.scm.verwaltung.uni-muenchen.de/internetdienste/', username='admin', password='admin',requests={'verify': False})
-    #redmine = Redmine('http://localhost/internetdienste/', username='admin', password='admin')
+    redmine = Redmine(
+        #'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
+        'http://localhost/internetdienste/',
+        username='admin',
+        password='admin',
+        requests={'verify': False})
 
     custom_fields = redmine.custom_field.all()
     cf_campus_kennung_id = None
-    cf_fiona_gruppe_id = None
+    #cf_fiona_gruppe_id = None
     cf_anrede_id = None
     cf_activ_id = None
     cf_inactiv_id = None
@@ -73,88 +88,87 @@ def import_contacts(file_path):
                 ck = row.get('Campus_Kennung', '').strip().lower()
                 email = row.get('Email', '').strip(',')
                 phone = row.get('Phone', '').strip(',')
-                
-                aktiviert_am = row.get('Aktiviert am', '') 
-                if aktiviert_am != '':
-                    aktiviert_am = datetime.datetime.strptime(aktiviert_am,'%d.%m.%Y %H:%M:%S').date().isoformat()
 
-                deaktiviert_am = row.get('Deaktiviert am', '') 
+                aktiviert_am = row.get('Aktiviert am', '')
+                if aktiviert_am != '':
+                    aktiviert_am = datetime.datetime.strptime(aktiviert_am,'%d.%m.%Y %H:%M:%S').date()
+
+                deaktiviert_am = row.get('Deaktiviert am', '')
                 if deaktiviert_am != '':
-                    deaktiviert_am = datetime.datetime.strptime(deaktiviert_am,'%d.%m.%Y %H:%M:%S').date().isoformat()
+                    deaktiviert_am = datetime.datetime.strptime(deaktiviert_am,'%d.%m.%Y %H:%M:%S').date()
 
                 if ck != '' and ck in all_contacts:
 
                     #ipdb.set_trace()
                     contact = all_contacts[ck].refresh()
-                    contact.first_name  = row.get('First Name', '').strip() 
-                    contact.middle_name = row.get('Middle Name', '').strip() 
-                    contact.last_name   = row.get('Last Name', '').strip() 
+                    contact.first_name = row.get('First Name', '').strip()
+                    contact.middle_name = row.get('Middle Name', '').strip()
+                    contact.last_name = row.get('Last Name', '').strip()
 
-                    contact.company     = row.get('Company', '').strip() 
-                    contact.phone       = phone
-                    contact.email       = email
-                    contact.website     = row.get('Website', '').strip() 
-                    contact.background  = row.get('Background', '').strip() 
-                    contact.job_title   = row.get('Job Title', '').strip()
-                    contact.tag_list    = row.get('Tags', [])
+                    contact.company = row.get('Company', '').strip()
+                    contact.phone = phone
+                    contact.email = email
+                    contact.website = row.get('Website', '').strip()
+                    contact.background = row.get('Background', '').strip()
+                    contact.job_title = row.get('Job Title', '').strip()
+                    contact.tag_list = row.get('Tags', [])
                     contact.address_attributes = {
-                        'street1' : row.get('Strasse', '').strip() ,
-                        'street2' : row.get('Strasse2', '').strip() ,
-                        'city'    : row.get('Stadt', '').strip() ,
-                        'zip'     : row.get('PLZ', '').strip() ,
-                        'country_code' : row.get('Country', '').strip() ,
+                        'street1': row.get('Strasse', '').strip(),
+                        'street2': row.get('Strasse2', '').strip(),
+                        'city': row.get('Stadt', '').strip(),
+                        'zip': row.get('PLZ', '').strip(),
+                        'country_code': row.get('Country', '').strip(),
                     }
-                    
-                    contact.custom_fields  = [
-                        { 'id': cf_campus_kennung_id, 'value' : row.get('Campus_Kennung', '').strip().lower() },
-                        #{ 'id': cf_fiona_gruppe_id,   'value' : row.get('Zugeteilte Fionagruppe', '') },
-                        { 'id': cf_status_id,         'value' : row.get('Status', '').strip() },
-                        { 'id': cf_anrede_id,         'value' : row.get('Anrede', '').strip() },
-                        #{ 'id': cf_activ_id,          'value' : aktiviert_am },
-                        #{ 'id': cf_inactiv_id,        'value' : deaktiviert_am },
+
+                    contact.custom_fields = [
+                        {'id': cf_campus_kennung_id, 'value': row.get('Campus_Kennung', '').strip().lower()},
+                        #{ 'id': cf_fiona_gruppe_id,   'value' : row.get('Zugeteilte Fionagruppe', '')},
+                        {'id': cf_status_id, 'value': row.get('Status', '').strip()},
+                        {'id': cf_anrede_id, 'value': row.get('Anrede', '').strip()},
+                        {'id': cf_activ_id, 'value': aktiviert_am},
+                        {'id': cf_inactiv_id, 'value': deaktiviert_am},
                     ]
 
                     contact.save()
 
-
-                else: 
+                else:
                     redmine.contact.create(
-                            project_id  = project.id,
-                            is_company  = row.get('Is company', False),
-                            first_name  = row.get('First Name', '').strip() ,
-                            middle_name = row.get('Middle Name', '').strip() ,
-                            last_name   = row.get('Last Name', '').strip() ,
-                            company     = row.get('Company', '').strip() ,
-                            phone       = row.get('Phone', '').strip() ,
-                            email       = row.get('Email', '').strip() ,
-                            website     = row.get('Website', '').strip() ,
-                            skype_name  = row.get('Skype', '').strip() ,
-                            birthday    = row.get('Birthday', '').strip() ,
-                            background  = row.get('Background', '').strip() ,
-                            job_title   = row.get('Job Title', '').strip() ,
-                            tag_list    = row.get('Tags', []) , 
-                            visibility  = 0,
-                            address_attributes = {
-                                'street1' : row.get('Strasse', '').strip() ,
-                                'street2' : row.get('Strasse2', '').strip() ,
-                                'city'    : row.get('Stadt', '').strip() ,
-                                'zip'     : row.get('PLZ', '').strip() ,
-                                'country_code' : row.get('Country', '').strip() ,
-                            }, 
-                            custom_fields  = [
-                                { 'id': cf_campus_kennung_id, 'value' : row.get('Campus_Kennung', '').strip().lower() },
-                                #{ 'id': cf_fiona_gruppe_id,   'value' : row.get('Zugeteilte Fionagruppe', '') },
-                                { 'id': cf_status_id,         'value' : row.get('Status', '').strip() },
-                                { 'id': cf_anrede_id,         'value' : row.get('Anrede', '').strip() },
-                                { 'id': cf_activ_id,          'value' : aktiviert_am },
-                                { 'id': cf_inactiv_id,        'value' : deaktiviert_am },
-                            ],
-                        )
+                        project_id=project.id,
+                        is_company=row.get('Is company', False),
+                        first_name=row.get('First Name', '').strip(),
+                        middle_name=row.get('Middle Name', '').strip(),
+                        last_name=row.get('Last Name', '').strip(),
+                        company=row.get('Company', '').strip(),
+                        phone=row.get('Phone', '').strip(),
+                        email=row.get('Email', '').strip(),
+                        website=row.get('Website', '').strip(),
+                        skype_name=row.get('Skype', '').strip(),
+                        birthday=row.get('Birthday', '').strip(),
+                        background=row.get('Background', '').strip(),
+                        job_title=row.get('Job Title', '').strip(),
+                        tag_list=row.get('Tags', []),
+                        visibility=0,
+                        address_attributes={
+                            'street1': row.get('Strasse', '').strip(),
+                            'street2': row.get('Strasse2', '').strip(),
+                            'city': row.get('Stadt', '').strip(),
+                            'zip': row.get('PLZ', '').strip(),
+                            'country_code': row.get('Country', '').strip(),
+                        },
+                        custom_fields=[
+                            {'id': cf_campus_kennung_id, 'value': row.get('Campus_Kennung', '').strip().lower()},
+                            #{'id': cf_fiona_gruppe_id,   'value' : row.get('Zugeteilte Fionagruppe', '') },
+                            {'id': cf_status_id, 'value': row.get('Status', '').strip()},
+                            {'id': cf_anrede_id, 'value': row.get('Anrede', '').strip()},
+                            {'id': cf_activ_id, 'value': aktiviert_am},
+                            {'id': cf_inactiv_id, 'value': deaktiviert_am},
+                        ],
+                    )
 
             except ValidationError, e:
                 #import ipdb; ipdb.set_trace()
                 print "Error on {row} with error: {message}".format(row=row, message=e.message)
-            except KeyError, e: 
+            except KeyError, e:
                 print "KeyError {message}".format(message=e.message)
                 ipdb.set_trace()
             except:

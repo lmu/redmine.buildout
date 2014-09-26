@@ -42,10 +42,10 @@ def import_projects(file_path):
     with open(file_path, 'rb') as csvfile:
         reader = csv.DictReader(csvfile, delimiter=';', quotechar='"')
 
-        #Fiona-Name;Fiona-Pfad;Playland-Titel;Erstellungsdatum;Status;URL;Sprache;Fionagruppe;
+        #Fiona-Name;Fiona-Pfad;Playland-Titel;Erstellungsdatum;Status;URL;Sprache;Fionagruppe;  # NOQA
 
         project = 0
-        all_projects = redmine.project.all()
+        #all_projects = redmine.project.all()
         rmaster_project = redmine.project.get(master_project)
 
         #import ipdb; ipdb.set_trace()
@@ -78,32 +78,30 @@ def import_projects(file_path):
 
                 except ResourceNotFoundError, e:
                     if len(path_list) == 2:
-                        project = redmine.project.create(name=fiona_title, 
-                                                         identifier=fiona_id, 
+                        project = redmine.project.create(name=fiona_title,
+                                                         identifier=fiona_id,
                                                          homepage=url,
-                                                         is_public=False, 
-                                                         inherit_members=True, 
+                                                         is_public=False,
+                                                         inherit_members=True,
                                                          parent_id=rmaster_project.id,
                                                          # Custom Fields
-                                                         custom_fields  = [
-                                                             { 'id': cf_status_id, 'value' : row.get('Status', '') },
-                                                             { 'id': cf_lang_id,   'value' : row.get('Sprache', '') }
-                                                         ], 
-                                                        )
+                                                         custom_fields=[
+                                                             {'id': cf_status_id, 'value': row.get('Status', '')},
+                                                             {'id': cf_lang_id,   'value': row.get('Sprache', '')},
+                                                         ])
                     elif len(path_list) == 3:
                         parent_project = redmine.project.get(path_list[1])
-                        redmine.project.create(name=fiona_title, 
-                                               identifier=fiona_id, 
+                        redmine.project.create(name=fiona_title,
+                                               identifier=fiona_id,
                                                homepage=url,
-                                               is_public=False, 
-                                               inherit_members=True, 
+                                               is_public=False,
+                                               inherit_members=True,
                                                parent_id=parent_project.id,
                                                # Custom Fields
-                                               custom_fields  = [
-                                                   { 'id': cf_status_id, 'value' : row.get('Status', '') },
-                                                   { 'id': cf_lang_id,   'value' : row.get('Sprache', '') }
-                                               ], 
-                                              )
+                                               custom_fields=[
+                                                   {'id': cf_status_id, 'value': row.get('Status', '')},
+                                                   {'id': cf_lang_id, 'value': row.get('Sprache', '')}
+                                               ])
 
             except ValidationError, e:
                 print "Error on {id} with error: {message}".format(id=fiona_id, message=e.message)
