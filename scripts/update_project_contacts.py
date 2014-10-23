@@ -2,12 +2,23 @@
 # -*- coding: utf-8 -*-
 
 import sys
-sys.path[0:0] = [
-    '/data/redmine.buildout/src/python-redmine',
-    '/data/redmine.buildout/eggs/ipython-1.2.1-py2.6.egg',
-    '/data/redmine.buildout/eggs/ipdb-0.8-py2.6.egg',
-    '/data/redmine.buildout/eggs/requests-2.3.0-py2.6.egg',
-]
+import socket
+
+hostname = socket.gethostname()
+if hostname == 'Pumukel-GNU-Tablet':
+    sys.path[0:0] = [
+        '/usr/local/Plone/redmine.buildout/src/python-redmine',
+        '/usr/local/Plone/buildout-cache/eggs/ipython-1.2.1-py2.7.egg',
+        '/usr/local/Plone/buildout-cache/eggs/ipdb-0.8-py2.7.egg',
+        '/usr/local/Plone/buildout-cache/eggs/requests-2.3.0-py2.7.egg',
+    ]
+elif hostname == 'redmine1':
+    sys.path[0:0] = [
+        '/data/redmine.buildout/src/python-redmine',
+        '/data/redmine.buildout/eggs/ipython-1.2.1-py2.6.egg',
+        '/data/redmine.buildout/eggs/ipdb-0.8-py2.6.egg',
+        '/data/redmine.buildout/eggs/requests-2.3.0-py2.6.egg',
+    ]
 
 from redmine import Redmine
 from redmine.exceptions import ResourceNotFoundError
@@ -17,13 +28,15 @@ import csv
 import datetime
 import os.path
 
+import ipdb
+
 
 def connect_projects_with_user(file_path):
     print file_path
 
     redmine = Redmine(
-        'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
-        #'http://localhost/internetdienste/',
+        #'https://www.scm.verwaltung.uni-muenchen.de/spielwiese/',
+        'http://localhost/internetdienste/',
         username='admin',
         password='admin',
         requests={'verify': False})
@@ -54,7 +67,7 @@ def connect_projects_with_user(file_path):
 
             print "update Project: " + fiona_id
 
-            if not user_data:
+            if user_data:
                 try:
                     project = redmine.project.get(fiona_id)
                     content = """
@@ -77,9 +90,17 @@ h1. Fionagruppen
                                 if user != '':
                                     contact = all_contacts.get(user.lower())
 
-                                    if not contact:
+                                    if contact:
 
                                         content += "* {{contact(%s)}}: %s \n" % (contact.id, user)
+                                        try:
+                                            redmine.contact_projects.create(
+                                                contact_id=contact.id,
+                                                id=project.id)
+                                        except ValidationError, e:
+                                            #print "Error on {id} with error: {message}".format(id=contact.id, message=e.message)
+                                            print "Contact: {cid} already exists on Project: {pid}".format(cid=contact.id, pid=project.id)
+
                                     else:
                                         content += "* " + user + "\n"
                                         error_message = error_store.get(user, {})

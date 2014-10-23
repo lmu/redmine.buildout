@@ -81,6 +81,8 @@ def import_contacts(file_path):
         #project = redmine.project.get('webauftritte')
         project = redmine.project.get('webprojekte')
 
+        redmine_date_format = redmine.date_format
+
         for row in reader:
             print row_number
             row_number += 1
@@ -92,10 +94,11 @@ def import_contacts(file_path):
                 aktiviert_am = row.get('Aktiviert am', '')
                 if aktiviert_am != '':
                     aktiviert_am = datetime.datetime.strptime(aktiviert_am,'%d.%m.%Y %H:%M:%S').date()
-
+                    aktiviert_am = datetime.datetime.strftime(aktiviert_am,redmine_date_format)
                 deaktiviert_am = row.get('Deaktiviert am', '')
                 if deaktiviert_am != '':
                     deaktiviert_am = datetime.datetime.strptime(deaktiviert_am,'%d.%m.%Y %H:%M:%S').date()
+                    deaktiviert_am = datetime.datetime.strftime(deaktiviert_am,redmine_date_format)
 
                 if ck != '' and ck in all_contacts:
 
@@ -111,7 +114,10 @@ def import_contacts(file_path):
                     contact.website = row.get('Website', '').strip()
                     contact.background = row.get('Background', '').strip()
                     contact.job_title = row.get('Job Title', '').strip()
-                    contact.tag_list = row.get('Tags', [])
+
+                    tag_list = list(set(contact.tag_list + row.get('Tags', '').split(',')))
+                    tag_list.remove('')
+                    contact.tag_list = tag_list
                     contact.address_attributes = {
                         'street1': row.get('Strasse', '').strip(),
                         'street2': row.get('Strasse2', '').strip(),
@@ -139,8 +145,8 @@ def import_contacts(file_path):
                         middle_name=row.get('Middle Name', '').strip(),
                         last_name=row.get('Last Name', '').strip(),
                         company=row.get('Company', '').strip(),
-                        phone=row.get('Phone', '').strip(),
-                        email=row.get('Email', '').strip(),
+                        phone=row.get('Phone', '').strip(', \n\r\t'),
+                        email=row.get('Email', '').strip(', \n\r\t'),
                         website=row.get('Website', '').strip(),
                         skype_name=row.get('Skype', '').strip(),
                         birthday=row.get('Birthday', '').strip(),
@@ -166,14 +172,13 @@ def import_contacts(file_path):
                     )
 
             except ValidationError, e:
-                #import ipdb; ipdb.set_trace()
                 print "Error on {row} with error: {message}".format(row=row, message=e.message)
             except KeyError, e:
                 print "KeyError {message}".format(message=e.message)
                 ipdb.set_trace()
-            except:
-                print sys.exc_info()[0]
-                ipdb.set_trace()
+            #except:
+            #    print sys.exc_info()[0]
+            #    ipdb.set_trace()
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
