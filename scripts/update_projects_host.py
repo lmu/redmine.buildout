@@ -24,7 +24,7 @@ from redmine import Redmine
 import ipdb
 
 
-def import_projectss():
+def update_projects():
 
     redmine = Redmine(
         #'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
@@ -69,4 +69,4 @@ def import_projectss():
         print 'Update Project: {id}'.format(id=project.identifier)
 
 if __name__ == "__main__":
-    import_projects()
+    update_projects()
