@@ -22,13 +22,14 @@ elif hostname == 'redmine1':
 from redmine import Redmine
 
 import ipdb
+from pprint import pprint
 
 
 def import_contacts():
 
     redmine = Redmine(
         #'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
-        'http://localhost/internetdienste/',
+        'https://localhost/internetdienste/',
         username='admin',
         password='admin',
         requests={'verify': False})
@@ -53,6 +54,7 @@ def import_contacts():
         new_fields = []
 
         for field in fields:
+            fval = field.value
             if field.name == 'Campus-Kennung':
                 if field.value != '':
                     fval = field.value.strip().lower()
@@ -62,11 +64,15 @@ def import_contacts():
             elif field.name == 'Status':
                 fval = field.value
                 if fval == 'Aktiv':
-                    fval = 'Aktiver Fiona Nutzer'
+                    fval = 'aktiver Fiona-Nutzer'
                 elif fval == 'Deaktiviert':
-                    fval = 'Aktiver Fiona Nutzer'
+                    fval = 'deaktivierter Fiona-Nutzer'
+                elif fval == 'Ohne Fiona':
+                    fval = 'aktiver Kunde ohne Fiona'
 
             new_fields.append({'id': field.id, 'value': fval})
+
+        #ipdb.set_trace()
 
         contact.custom_fields = new_fields
         contact.save()

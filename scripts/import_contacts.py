@@ -37,8 +37,8 @@ def import_contacts(file_path):
     print file_path
 
     redmine = Redmine(
-        #'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
-        'http://localhost/internetdienste/',
+        'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
+        #'http://localhost/internetdienste/',
         username='admin',
         password='admin',
         requests={'verify': False})

@@ -20,15 +20,17 @@ elif hostname == 'redmine1':
     ]
 
 from redmine import Redmine
+from redmine.exceptions import ResourceNotFoundError
 
 import ipdb
+from pprint import pprint
 
 
 def update_projects():
 
     redmine = Redmine(
         #'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
-        'http://localhost/internetdienste/',
+        'https://localhost/internetdienste/',
         username='admin',
         password='admin',
         requests={'verify': False})
@@ -46,27 +48,30 @@ def update_projects():
     _all_projects = redmine.project.all()
 
     for project in _all_projects:
-        fields = project.custom_fields
+        _fields = project.custom_fields
+        fields = {}
+        for field in _fields:
+            fields[field.name] = field
 
-        new_fields = []
+        #ipdb.set_trace()
 
-        for field in fields:
-            if field.name == 'Host':
-                fval = field.value
-                if fval == 'intern':
-                    new_fields.append(
-                        {'id': cf_hostname_id,
-                         'value': 'lmu-.verwaltung.uni-muenchen.de'})
-                elif fval == 'extern':
-                    new_fields.append(
-                        {'id': cf_hostname_id,
-                         'value': 'extern'})
+        if fields['Host'].value == 'Intern':
+            print 'Project {id} has declared HOST: Intern'.format(id=project.identifier)
 
-            new_fields.append({'id': field.id, 'value': fval})
+        if fields['Host'].value == 'Intern' and fields['Hostname'].value == '':
+            project.custom_fields = [{'id': cf_hostname_id, 'value': 'lmu-de.verwaltung.uni-muenchen.de (141.84.149.211)'}]
 
-        project.custom_fields = new_fields
-        project.save()
-        print 'Update Project: {id}'.format(id=project.identifier)
+            project.save()
+            print 'Update Project: {id}'.format(id=project.identifier)
+
+        try:
+            wegweiser = redmine.wiki_page.get('Wegweiser', project_id=project.id)
+        except ResourceNotFoundError as e:
+            wegweiser = redmine.wiki_page.create(project_id=project.id,
+                title='Wegweiser',
+                text="""bitte [[wegweiser]] anlegen.""",
+                comments="Initiales Anlegen durch Update-Script")
+            print 'Write Wiki Page Wegweiser to Project {id}'.format(id=project.identifier)
 
 if __name__ == "__main__":
     update_projects()
