@@ -93,13 +93,8 @@ h1. Fionagruppen
                                     if contact:
 
                                         content += "* {{contact(%s)}}: %s \n" % (contact.id, user)
-                                        try:
-                                            redmine.contact_projects.create(
-                                                contact_id=contact.id,
-                                                id=project.id)
-                                        except ValidationError, e:
-                                            #print "Error on {id} with error: {message}".format(id=contact.id, message=e.message)
-                                            print "Contact: {cid} already exists on Project: {pid}".format(cid=contact.id, pid=project.id)
+                                        
+                                        contact.project.add(project.id)
 
                                     else:
                                         content += "* " + user + "\n"
