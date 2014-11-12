@@ -83,7 +83,7 @@ def update_projects(group_file_path, structure_file_path):
     error_store = {}
     diff_store = {}
 
-    # read Fionagruppen+Mitglieder aus JSOn-Wiki-Page
+    # read Fionagruppen+Mitglieder aus JSON-Wiki-Page
 
     wiki_fgm = redmine.wiki_page.get(
         'Auto-Fiona-Gruppen-Mitglieder',
@@ -123,19 +123,7 @@ def update_projects(group_file_path, structure_file_path):
 
             new_fgm_data[gruppenname] = {'projects': [], 'members': members}
 
-    # 2. Compare old and new Fiona Group Data
-
-    for entry in new_fgm_data:
-        if entry in old_fgm_data:
-            differences = new_fgm_data[entry]['members'] - old_fgm_data[entry]['members']  # NOQA
-            if differences:
-                pprint(differences)
-            # diff_store_member
-        else:
-            # diff_store_groups
-            print(entry + "not knowen till today")
-
-        # 3. Import Stucture
+    # 3. Import Stucture
 
     with open(structure_file_path, 'rb') as csvfile_strcuture:
         reader = csv.DictReader(csvfile_strcuture, delimiter=';', quotechar='"')
@@ -236,6 +224,8 @@ h1. Fionagruppen
                             group_name = group_data[0]
                             user_ids = group_data[1].split(' ')
 
+                            new_fgm_data[group]['projects'].append(myproject.identifier)
+
                             content += "\n\nh2. " + group_name + "\n\n"
                             for user in user_ids:
                                 #contact = redmine.contact.get()
@@ -276,6 +266,32 @@ h1. Fionagruppen
 
     # Timestamp for reporting
     time_stamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
+
+    # 2. Process prefix-Data
+    wiki_prefix = redmine.wiki_page.get(
+        'Auto-Fiona-Gruppen-Prefix-Zuordnung',
+        project_id=rmaster_project.id)
+
+    prefix_text = wiki_prefix.text
+    for row in prefix_text.splitlines()
+        if row.startswith('*'):
+            line = row[2:].split(':')
+            group_name = line[0]
+            prefix_projects = line[1].split(',')
+            
+
+    # 2. Compare old and new Fiona Group Data
+
+    for entry in new_fgm_data:
+        if entry in old_fgm_data:
+            differences = new_fgm_data[entry]['members'] - old_fgm_data[entry]['members']  # NOQA
+            if differences:
+                pprint(differences)
+            # diff_store_member
+        else:
+            # diff_store_groups
+            print(entry + "not knowen till today")
+
 
     ipdb.set_trace()
     # 4. Fehlerprotokolle
