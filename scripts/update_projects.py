@@ -14,10 +14,10 @@ if hostname == 'Pumukel-GNU-Tablet':
     ]
 elif hostname == 'redmine1':
     sys.path[0:0] = [
-        '/data/redmine.buildout/eggs/python_redmine-1.0.1-py2.6.egg',
-        '/data/redmine.buildout/eggs/ipython-1.2.1-py2.6.egg',
-        '/data/redmine.buildout/eggs/ipdb-0.8-py2.6.egg',
-        '/data/redmine.buildout/eggs/requests-2.3.0-py2.6.egg',
+        '/data/buildout-cache/eggs/python_redmine-1.0.1-py2.6.egg',
+        '/data/buildout-cache/eggs/ipython-1.2.1-py2.6.egg',
+        '/data/buildout-cache/eggs/ipdb-0.8-py2.6.egg',
+        '/data/buildout-cache/eggs/requests-2.3.0-py2.6.egg',
     ]
 
 from redmine import Redmine
@@ -33,11 +33,11 @@ import ipdb
 from pprint import pprint  # NOQA
 
 
-def connect_projects_with_user(group_file_path, structure_file_path):
+def update_projects(group_file_path, structure_file_path):
 
     redmine = Redmine(
-        'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
-        #'https://localhost/internetdienste/',
+        #'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
+        'https://localhost/internetdienste/',
         #'http://localhost/internetdienste/',
         username='admin',
         password='admin',
@@ -49,12 +49,25 @@ def connect_projects_with_user(group_file_path, structure_file_path):
     custom_fields = redmine.custom_field.all()
     cf_lang_id = None
     cf_status_id = None
+    cf_host_id = None
+    cf_hostname_id = None
+    cf_analytic_tool_id = None
+    cf_analytic_url_id = None
 
     for cf in custom_fields:
-        if cf.name == "Sprache":
+        if cf.name == 'Sprache':
             cf_lang_id = cf.id
-        elif cf.name == "Status":
+        elif cf.name == 'Status':
             cf_status_id = cf.id
+        elif cf.name == 'Host':
+            cf_host_id = cf.id
+        elif cf.name == 'Hostname':
+            cf_hostname_id = cf.id
+        elif cf.name == 'Analytic-Tool':
+            cf_analytic_tool_id = cf.id
+        elif cf.name == 'Analytic-URL':
+            cf_analytic_url_id = cf.id
+
 
     _all_contacts = redmine.contact.all()
     all_contacts = {}
@@ -129,7 +142,6 @@ def connect_projects_with_user(group_file_path, structure_file_path):
 
         #Fiona-Name;Fiona-Pfad;Playland-Titel;Erstellungsdatum;Status;URL;Sprache;Fionagruppe;  # NOQA
 
-        project = 0
         #all_projects = redmine.project.all()
 
         for row in reader:
@@ -151,13 +163,23 @@ def connect_projects_with_user(group_file_path, structure_file_path):
             try:
                 myproject = redmine.project.get(fiona_id)
                 myproject.refresh()
-                ipdb.set_trace()
                 myproject.homepage = url
                 myproject.name = fiona_title
-                myproject.custom_fields = [
-                    {'id': cf_status_id, 'value': row.get('Status', '')},
-                    {'id': cf_lang_id,   'value': row.get('Sprache', '')},
-                ]
+                cfs = myproject.custom_fields
+                new_fields = []
+
+                for field in cfs:
+                    fval = field.value if 'value' in field else ''
+                    if field.name == 'Status':
+                        fval = row.get('Status', '')
+                    elif field.name == 'Sprache':
+                        fval = row.get('Sprache', '')
+                    #if fval == '0' or fval == 0:
+                    #    fval = ''
+                    new_fields.append({'id': field.id, 'value': fval})
+
+                #ipdb.set_trace()
+                myproject.custom_fields = new_fields
                 myproject.save()
 
             except ResourceNotFoundError as e:
@@ -173,6 +195,10 @@ def connect_projects_with_user(group_file_path, structure_file_path):
                         custom_fields=[
                             {'id': cf_status_id, 'value': row.get('Status', '')},  # NOQA
                             {'id': cf_lang_id, 'value': row.get('Sprache', '')},
+                            {'id': cf_host_id, 'value': ''},
+                            {'id': cf_hostname_id, 'value': ''},
+                            {'id': cf_analytic_tool_id, 'value': ''},
+                            {'id': cf_analytic_url_id, 'value': ''},
                         ])
                 elif len(path_list) == 3:
                     parent_project = redmine.project.get(path_list[1])
@@ -186,7 +212,11 @@ def connect_projects_with_user(group_file_path, structure_file_path):
                         # Custom Fields
                         custom_fields=[
                             {'id': cf_status_id, 'value': row.get('Status', '')},  # NOQA
-                            {'id': cf_lang_id, 'value': row.get('Sprache', '')}
+                            {'id': cf_lang_id, 'value': row.get('Sprache', '')},
+                            {'id': cf_host_id, 'value': ''},
+                            {'id': cf_hostname_id, 'value': ''},
+                            {'id': cf_analytic_tool_id, 'value': ''},
+                            {'id': cf_analytic_url_id, 'value': ''},
                         ])
 
             if user_data:
@@ -201,7 +231,7 @@ h1. Fionagruppen
                     groups = user_data.split('#')
 
                     for group in groups:
-                        if group != '':
+                        if group != '' and group != 'all_users':
                             group_data = group.split(':')
                             group_name = group_data[0]
                             user_ids = group_data[1].split(' ')
@@ -216,26 +246,26 @@ h1. Fionagruppen
 
                                         content += "* {{contact(%s)}}: %s \n" % (contact.id, user)  # NOQA
 
-                                        contact.project.add(project.id)
+                                        contact.project.add(myproject.id)
 
                                     else:
                                         content += "* " + user + "\n"
                                         error_message = error_store.get(user, {})
                                         e_webauftritt = error_message.get('Webauftritt', [])
-                                        e_webauftritt.append(project.identifier)
+                                        e_webauftritt.append(myproject.identifier)
                                         e_group = error_message.get('Group',[])
                                         e_group.append(group_name)
 
                                         error_store[user] = {'Webauftritt': e_webauftritt, 'Group': e_group}
 
                     try:
-                        page = redmine.wiki_page.get('Fionagruppen',project_id=project.id)
+                        page = redmine.wiki_page.get('Fionagruppen',project_id=myproject.id)
                         redmine.wiki_page.update('Fionagruppen',
-                                                 project_id=project.id,
+                                                 project_id=myproject.id,
                                                  title='Fionagruppen',
                                                  text=content)
                     except ResourceNotFoundError, e:
-                        redmine.wiki_page.create(project_id=project.id,
+                        redmine.wiki_page.create(project_id=myproject.id,
                                                  title='Fionagruppen',
                                                  text=content)
 
@@ -247,9 +277,10 @@ h1. Fionagruppen
     # Timestamp for reporting
     time_stamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
 
+    ipdb.set_trace()
     # 4. Fehlerprotokolle
     wiki_fgm.text = json.dumps(new_fgm_data)
-    wiki_fgm.comment = "Import from " + time_stamp
+    wiki_fgm.comment = 'Import from ' + str(time_stamp)
     wiki_fgm.save()
 
     if error_store:
@@ -271,7 +302,7 @@ h1. Fionagruppen
                 break
         redmine.issue.create(
             project_id=support_project.id,
-            subject="Unbekannte Nutzer bei Import " + time_stamp,
+            subject='Unbekannte Nutzer bei Import ' + str(time_stamp),
             description=error_message,
             assigned_to_id=support_team.id)
 
@@ -282,4 +313,4 @@ if __name__ == "__main__":
         structure_file_param = sys.argv[2]
         structure_file_path = os.path.abspath(structure_file_param)
 
-        connect_projects_with_user(group_file_path, structure_file_path)
+        update_projects(group_file_path, structure_file_path)
