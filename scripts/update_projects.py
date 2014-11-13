@@ -36,8 +36,8 @@ from pprint import pprint  # NOQA
 def update_projects(group_file_path, structure_file_path):
 
     redmine = Redmine(
-        #'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
-        'https://localhost/internetdienste/',
+        'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
+        #'https://localhost/internetdienste/',
         #'http://localhost/internetdienste/',
         username='admin',
         password='admin',
@@ -45,6 +45,8 @@ def update_projects(group_file_path, structure_file_path):
 
     master_project = 'webprojekte'
     rmaster_project = redmine.project.get(master_project)
+
+    ipdb.set_trace()
 
     custom_fields = redmine.custom_field.all()
     cf_lang_id = None
@@ -68,7 +70,6 @@ def update_projects(group_file_path, structure_file_path):
         elif cf.name == 'Analytic-URL':
             cf_analytic_url_id = cf.id
 
-
     _all_contacts = redmine.contact.all()
     all_contacts = {}
     for contact in _all_contacts:
@@ -83,7 +84,7 @@ def update_projects(group_file_path, structure_file_path):
     error_store = {}
     diff_store = {}
 
-    # read Fionagruppen+Mitglieder aus JSON-Wiki-Page
+    # 1. read Fionagruppen + Mitglieder aus JSON-Wiki-Page
 
     wiki_fgm = redmine.wiki_page.get(
         'Auto-Fiona-Gruppen-Mitglieder',
@@ -122,6 +123,23 @@ def update_projects(group_file_path, structure_file_path):
                         }
 
             new_fgm_data[gruppenname] = {'projects': [], 'members': members}
+
+    # 2. Process prefix-Data
+    wiki_prefix = redmine.wiki_page.get(
+        'Auto-Fiona-Gruppen-Prefix-Zuordnung',
+        project_id=rmaster_project.id)
+
+    prefix_text = wiki_prefix.text
+    for row in prefix_text.splitlines():
+        if row.startswith('*'):
+            line = row[2:].split(':')
+            group_name = line[0]
+            prefix_projects = line[1].split(',')
+            for prefix_project in prefix_projects:
+                project = redmine.project.get(prefix_project)
+                new_fgm_data[group_name]['projects'].append({'id': project.id, 'fiona_id': project.identifier})
+
+
 
     # 3. Import Stucture
 
@@ -266,19 +284,6 @@ h1. Fionagruppen
 
     # Timestamp for reporting
     time_stamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
-
-    # 2. Process prefix-Data
-    wiki_prefix = redmine.wiki_page.get(
-        'Auto-Fiona-Gruppen-Prefix-Zuordnung',
-        project_id=rmaster_project.id)
-
-    prefix_text = wiki_prefix.text
-    for row in prefix_text.splitlines()
-        if row.startswith('*'):
-            line = row[2:].split(':')
-            group_name = line[0]
-            prefix_projects = line[1].split(',')
-            
 
     # 2. Compare old and new Fiona Group Data
 
