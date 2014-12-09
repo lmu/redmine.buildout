@@ -299,7 +299,19 @@ h1. Fionagruppen
                     pass
 
     # Timestamp for reporting
-    time_stamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
+    time_stamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+
+    # 2. Process prefix-Data
+    wiki_prefix = redmine.wiki_page.get(
+        'Auto-Fiona-Gruppen-Prefix-Zuordnung',
+        project_id=rmaster_project.id)
+
+    prefix_text = wiki_prefix.text
+    for row in prefix_text.splitlines()
+        if row.startswith('*'):
+            line = row[2:].split(':')
+            group_name = line[0]
+            prefix_projects = line[1].split(',')
 
     # 2. Compare old and new Fiona Group Data
 
