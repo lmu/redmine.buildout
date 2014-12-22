@@ -20,6 +20,8 @@ elif hostname == 'redmine1':
         '/data/buildout-cache/eggs/requests-2.3.0-py2.6.egg',
     ]
 
+from ConfigParser import SafeConfigParser
+
 from redmine import Redmine
 from redmine.exceptions import ResourceNotFoundError
 from redmine.exceptions import ValidationError
@@ -31,6 +33,20 @@ import os.path
 
 import ipdb
 from pprint import pprint  # NOQA
+
+
+class InternetdiensteRedmine(object):
+
+    def __init__(self):
+        secrets = SafeConfigParser()
+        secrets.read('secrets.cfg')
+
+        self.redmine = Redmine(
+
+
+            requests={'verify': False})
+
+        self.rmaster_project = redmine.project.get(secrets.get('master_project'))
 
 
 def update_projects(group_file_path, structure_file_path):
