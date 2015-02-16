@@ -36,10 +36,11 @@ import time
 
 import logging
 
+
 def update_projects(group_file_path, structure_file_path):
 
     # Set up log handler for Fiona Redmine Import:
-    log = logging.getLogger('Redmine-Fiona-Import-Logger')  # "Redmine Fiona Import Logger"
+    log = logging.getLogger('Redmine-Fiona-Import-Logger')
     my_formatter = logging.Formatter(
         fmt='%(name)s: %(asctime)s - %(levelname)s: %(message)s',
         datefmt="%Y-%m-%d %H:%M:S"
@@ -47,11 +48,28 @@ def update_projects(group_file_path, structure_file_path):
     stdout_hanlder = logging.StreamHandler(sys.stdout)
     stdout_hanlder.setFormatter(my_formatter)
     log.addHandler(stdout_hanlder)
-    file_handler = logging.FileHandler('fione_import.log', mode='w', encoding='utf-8')
+    file_handler = logging.FileHandler(
+        'fione_import.log',
+        mode='w',
+        encoding='utf-8')
     file_handler.setFormatter(my_formatter)
     log.addHandler(file_handler)
     # Set Basic Log-Level for this
     log.setLevel(logging.DEBUG)
+
+    # Timestamp for reporting
+    time_stamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+
+    # Setup Internal Storage Variables for later Messaging trough Redmine
+    store_new_projects = {}
+    store_updated_projects = {}
+    store_new_users = {}
+    store_users_without_campus_kennung = {}
+    store_prefix_nonexisting_project = {}
+    store_new_group = {}
+    store_diff = {}
+    #error_store = {}
+    #diff_store = {}
 
     # Setup Redmine-Connector:
     redmine = Redmine(
@@ -68,7 +86,10 @@ def update_projects(group_file_path, structure_file_path):
     master_project = 'webprojekte'
     rmaster_project = redmine.project.get(master_project)
 
-    log.debug(u"Base Projekt für Webprojekte: [%s] %s - %s", rmaster_project.id, rmaster_project.identifier, rmaster_project.name)
+    log.debug(u"Base Projekt für Webprojekte: [%s] %s - %s",
+              rmaster_project.id,
+              rmaster_project.identifier,
+              rmaster_project.name)
 
     # Setup Reference for Custom Fields:
     custom_fields = redmine.custom_field.all()
@@ -111,26 +132,32 @@ def update_projects(group_file_path, structure_file_path):
                 ck_n = field.value.strip().lower()
                 if ck_n:
                     ck = ck_n
+                else:
+                    log.debug('Contact [%s] found, has no Campus-Kennung')
+                    store_users_without_campus_kennung[contact.id] = {
+                        'name': contact.name,
+                        'email': contact.email,
+                        'projects': contact.projects
+                    }
         log.debug("add %s to all_contacts", ck)
         all_contacts[ck] = contact
 
     log.info(u"Anzahl an bekannten Kontakten: %s", str(len(all_contacts)))
-
-    # Setup Internal Storage Variables for later Messaging trough Redmine
-    error_store = {}
-    diff_store = {}
 
     # Proceed Import Steps:
     # 1. Read Fionagruppen and group membership
     # 1.1. Read OLD Fionagruppen and group membership data from JSON-Wiki-Page
     # 1.2. Read NEW Fionagruppen and group membership data from input file
     # 1.3. Assign special Fiona groups to projects
+    # 2.
+    # 3.
 
     # 1. Read Fionagruppen and group membership:
     # 1.1. Read OLD Fionagruppen and group membership data from JSON-Wiki-Page
     log.info(u'Begin: AUTO-Fiona-Gruppen-Mitglieder Step')
 
-    # Internal Dictionaries for Groups with Projects and Members (old, new for comparison reasons)
+    # Internal Dictionaries for Groups with Projects and Members
+    # (old, new for comparison reasons)
     old_fgm_data = {}
     new_fgm_data = {}
 
@@ -140,12 +167,13 @@ def update_projects(group_file_path, structure_file_path):
 
     wiki_text = wiki_fgm.text
 
-    # strip all additional Redmine markup (Redmine-Tweaks) from wiki-page so that we have only JSON data
-    wiki_text = wiki_text.replace('{{fnlist}}','')
-    wiki_text = wiki_text.replace('<div id="wiki_extentions_footer">','')
-    wiki_text = wiki_text.replace('---','')
-    wiki_text = wiki_text.replace('{{lastupdated_at}} von {{lastupdated_by}}','')
-    wiki_text = wiki_text.replace('</div>','')
+    # strip all additional Redmine markup (Redmine-Tweaks) from wiki-page
+    # so that we have only JSON data
+    wiki_text = wiki_text.replace('{{fnlist}}', '')
+    wiki_text = wiki_text.replace('<div id="wiki_extentions_footer">', '')
+    wiki_text = wiki_text.replace('---', '')
+    wiki_text = wiki_text.replace('{{lastupdated_at}} von {{lastupdated_by}}', '')
+    wiki_text = wiki_text.replace('</div>', '')
     wiki_text = wiki_text.strip()
 
     log.debug(u"Content of Auto-Fiona-Gruppen-Mitglieder Wiki Seite:\n%s", pformat(wiki_text))
@@ -175,15 +203,15 @@ def update_projects(group_file_path, structure_file_path):
                         #contact_mitglied = all_contacts.get(mitglied.lower())
                         members.append(user)
                         if user not in all_contacts:
-                            error_message = error_store.get(user, {})
-                            e_webauftritt = error_message.get('Webauftritt', [])
+                            l_group = store_new_users.get(user, {})
+                            e_webauftritt = l_group.get('projects', [])
                             #e_webauftritt.append(project.identifier)
-                            e_group = error_message.get('Group', [])
+                            e_group = l_group.get('groups', [])
                             e_group.append(gruppenname)
 
-                            error_store[user] = {
-                                'Webauftritt': e_webauftritt,
-                                'Group': e_group
+                            store_new_users[user] = {
+                                'projects': e_webauftritt,
+                                'groups': e_group
                             }
             log.debug('Found Group "%s", with Members: %s', gruppenname, ', '.join(members))
             new_fgm_data[gruppenname] = {'projects': [], 'members': members}
@@ -215,10 +243,12 @@ def update_projects(group_file_path, structure_file_path):
                             try:
                                 project = redmine.project.get(prefix_project.strip())
                                 new_fgm_data[c_group_name]['projects'].append(
-                                    {'id': project.id, 'fiona_id': project.identifier})
+                                    {'id': project.id,
+                                     'fiona_id': project.identifier})
                                 log.debug('Add project: "%s" to group: "%s"', project.identifier, c_group_name)
                             except ResourceNotFoundError as e:
                                 log.error(u'No Project with id "%s" found', prefix_project)
+                                store_prefix_nonexisting_project.append(prefix_project)
 
             else:
                 for prefix_project in prefix_projects:
@@ -229,8 +259,10 @@ def update_projects(group_file_path, structure_file_path):
                         log.debug('Add project: "%s" to group: "%s"', project.identifier, group_name)
                     except ResourceNotFoundError as e:
                         log.error(u'No Project with id "%s" found', prefix_project)
+                        store_prefix_nonexisting_project.append(prefix_project)
                     except KeyError as e:
                         log.error(u'A Group provided that is unknown: %s', group_name)
+                        store_prefix_nonexisting_group.append(group_name)
 
     log.info('Finished: Auto-Fiona-Gruppen-Prefix-Zuordnung Step')
 
@@ -253,12 +285,17 @@ def update_projects(group_file_path, structure_file_path):
             try:
                 myproject = redmine.project.get(fiona_id)
                 myproject.refresh()
+                l_message = {}
                 if myproject.name != fiona_title:
                     log.debug('Update project: "%s" with new Title: "%s"', myproject.identifier, fiona_title)
+                    l_message['title_old'] = myproject.name
+                    l_message['title_new'] = fiona_title
                     myproject.name = fiona_title
 
                 if myproject.homepage != url:
                     log.debug('Update project: "%s" with new homepage URL: "%s"', myproject.identifier, url)
+                    l_message['homepage_old'] = myproject.name
+                    l_message['homepage_new'] = fiona_title
                     myproject.homepage = url
                 cfs = myproject.custom_fields
                 new_fields = []
@@ -269,19 +306,26 @@ def update_projects(group_file_path, structure_file_path):
                         nfval = row.get('Status', '')
                         if nfval != fval:
                             log.debug('Update project: "%s" with new Status: "%s"', myproject.identifier, url)
+                            l_message['status_old'] = fval
+                            l_message['status_new'] = nfval
                             fval = nfval
                     elif field.name == 'Sprache':
                         nfval = row.get('Sprache', '')
                         if nfval != fval:
                             log.debug('Update project: "%s" with new Language: "%s"', myproject.identifier, url)
+                            l_message['lang_old'] = fval
+                            l_message['lang_new'] = nfval
                             fval = nfval
                     new_fields.append({'id': field.id, 'value': fval})
 
                 myproject.custom_fields = new_fields
                 myproject.save()
+                if l_message:
+                    store_updated_projects[myproject.identifier] = l_message
 
             except ResourceNotFoundError as e:
                 log.info('No Project with identifier: "%s" found, will be created', fiona_id)
+                store_new_projects.append(fiona_id)
                 if len(path_list) == 2:
                     myproject = redmine.project.create(
                         name=fiona_title,
@@ -324,15 +368,48 @@ def update_projects(group_file_path, structure_file_path):
                 for group in groups:
                     group = group.strip()
                     if group != '' and group != 'all_users':
-                        new_fgm_data[group]['projects'].append({'id':myproject.id, 'identifier': myproject.identifier})
+                        new_fgm_data[group]['projects'].append(
+                            {'id': myproject.id,
+                             'identifier': myproject.identifier})
 
     # 3. Compare and handle difference on Fiona Data:
-    # Timestamp for reporting
-    time_stamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
 
     # 3.1. Remove Ignored Groups from New Fiona Group Data:
-    
+    log.info('Begin: Auto-Fiona-Gruppen-Prefix-Zuordnung Step')
 
+    wiki_group_ignore = redmine.wiki_page.get(
+        'Auto-Fiona-Gruppen-Prefix-Zuordnung',
+        project_id=rmaster_project.id)
+
+    wiki_group_ignore_text = wiki_group_ignore.text
+
+    for line in wiki_group_ignore_text:
+        if line.startswith('* '):
+            l_group = line[2:]
+            if l_group in new_fgm_data:
+                del new_fgm_data[l_group]
+
+    wiki_group_temp_ignore = redmine.wiki_page.get(
+        'Auto-Fiona-Gruppen-Prefix-Zuordnung',
+        project_id=rmaster_project.id)
+
+    wiki_group_temp_ignore_text = wiki_group_temp_ignore.text
+
+    for line in wiki_group_temp_ignore_text:
+        if line.startswith('* '):
+            l_group = line[2:]
+            if l_group in new_fgm_data:
+                del new_fgm_data[l_group]
+
+    # Transform new_fgm_data into project_group-mapping
+    for l_group_key, l_group_value in new_fgm_data.iteritems():
+        if not l_group_value['projects']:
+            store_group_with_no_projects.append(l_group_key)
+        if not l_group_value['members']:
+            store_group_with_no_members.append(l_group_key)
+        if l_group_value['projects'] and l_group_value['members']:
+            for project in l_group_value['projects']:
+                store_project_data[project] = store_project_data.get(project, []).append(project)  # NOQA
 
     # 3.1. Compare old and new Fiona Group Data
     for entry in new_fgm_data:
@@ -346,8 +423,8 @@ def update_projects(group_file_path, structure_file_path):
             log.warn("%s not known till today", entry)
 
     # 3.2.
-
-
+    for project_key, groups in store_project_data.iteritems():
+        l_project = redmine.project.get(project_key)
 
 
 
