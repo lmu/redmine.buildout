@@ -20,8 +20,7 @@ elif hostname == 'redmine1':
         '/data/buildout-cache/eggs/requests-2.3.0-py2.6.egg',
     ]
 
-from ConfigParser import SafeConfigParser
-
+# from ConfigParser import SafeConfigParser
 from redmine import Redmine
 from redmine.exceptions import ResourceNotFoundError
 from redmine.exceptions import ValidationError
@@ -31,7 +30,7 @@ import csv
 import json
 import datetime
 import os.path
-import pprint
+# import pprint
 import time
 
 import logging
@@ -43,7 +42,7 @@ def update_projects(group_file_path, structure_file_path):
     log = logging.getLogger('Redmine-Fiona-Import-Logger')
     my_formatter = logging.Formatter(
         fmt='%(name)s: %(asctime)s - %(levelname)s: %(message)s',
-        datefmt="%Y-%m-%d %H:%M:S"
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
     stdout_hanlder = logging.StreamHandler(sys.stdout)
     stdout_hanlder.setFormatter(my_formatter)
@@ -58,26 +57,55 @@ def update_projects(group_file_path, structure_file_path):
     log.setLevel(logging.DEBUG)
 
     # Timestamp for reporting
-    time_stamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+    datefmt = '%Y-%m-%d %H:%M'  # user timestamp.strf(datefmt) for output
+    today = datetime.date.today()
+    begin_time_stamp = datetime.datetime.now()
 
-    # Setup Internal Storage Variables for later Messaging trough Redmine
-    store_new_projects = {}
-    store_updated_projects = {}
-    store_new_users = {}
-    store_users_without_campus_kennung = {}
-    store_prefix_nonexisting_project = {}
-    store_new_group = {}
-    store_diff = {}
-    #error_store = {}
-    #diff_store = {}
+    # Setup Internal Storage Variables for later Messaging trough Redmine - error-logs
+    store_new_projects = []  # [project_identifiers] <-- from Fiona structure file
+    store_removed_projects = []  # [project_identfier]
+    store_updated_projects = {}  # { project_identifiers : { change_field_old/new: changed_value_old/new } }
+    store_new_users = {}  # {campus_kennung : {'projects': [], 'groups': []}] <-- from Fiona group file
+    store_users_without_campus_kennung = {}  # from all_contacts --> { contact_id : { name: _, email: -, projects: [] }
+    store_prefix_nonexisting_project = []  # [project_identifiers]
+    store_prefix_nonexisting_group = []  # [group_names]
+    store_group_with_no_projects = []  # [group_names]
+    store_group_with_no_members = []  # [group_names]
+    store_new_groups = []  # [group_names]
+    store_removed_groups = []  # [group_names]
+    store_new_members_in_group = {}  # {group_name: [members]}
+    store_removed_members_in_group = {}  # {group_name: [members]}
+    store_project_added_groups = {}  # {project_identifier: [group]}
+    store_project_removed_groups = {}  # {project_identifier: [group]}
+    store_project_added_members = {}  # {project_identifier: [campus-kennung]}
+    store_project_removed_members = {}  # {project_identifier: [campus-kennung]}
+    store_no_fiona_contacts = []  # [campus-kennung]
+    store_no_fiona_projects = []  # [project_identifier]
+    store_no_webproject_projects = []  # [project_identifier]
+    # special stores - no error log
+    store_project_data = {}  # {project_idetifier : [group_names]}
+
+    # Special Wiki-Pages from Redmine for processing:
+    # 1. Auto-Fiona-Gruppen-Mitglieder
+    # 2. Auto-Fiona-Gruppen-Prefix-Zuordnung
+    # 3. Auto-Fiona-Gruppen-Ignore
+    # 4. Auto-Fiona-Gruppen-Temp-Ignore
+    # Special Wiki-Pages for Wegweiser
+    # 1. Auto-Webprojekt_Wegweiser_new
+    # 2. Auto-Webprojekt-Wegweiser_old
+    # 3. AUto-Projekt_Wegweiser
+    # Special Wiki-Pages for Logging
+    # 1. FionaImportLogs <-- Master page / parent for all Logs
+    # 2. Fiona-Import-Log-ISODate for each Import
 
     # Setup Redmine-Connector:
     redmine = Redmine(
         #'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
         'https://localhost/internetdienste/',
         #'http://localhost/internetdienste/',
-        username='admin',
-        password='admin',
+        #username='admin',
+        #password='admin',
+        key='6824fa6b6ad10fa4828e003faf793a2260688486',
         requests={'verify': False})
 
     log.info("Connecting to Redmine Instance %s ", redmine.url)
@@ -117,7 +145,7 @@ def update_projects(group_file_path, structure_file_path):
     log.debug(u"Custom Field ID für Sprache: %s", cf_lang_id)
     log.debug(u"Custom Field ID für Status: %s", cf_status_id)
     log.debug(u"Custom Field ID für Host: %s", cf_host_id)
-    log.debug(u"Custom Field ID für Hostename: %s", cf_hostname_id)
+    log.debug(u"Custom Field ID für Hostname: %s", cf_hostname_id)
     log.debug(u"Custom Field ID für Analytic-Tool: %s", cf_analytic_tool_id)
     log.debug(u"Custom Field ID für Analytic-URL: %s", cf_analytic_url_id)
 
@@ -125,22 +153,25 @@ def update_projects(group_file_path, structure_file_path):
     _all_contacts = redmine.contact.all()
     all_contacts = {}
     for contact in _all_contacts:
-        fields = contact.custom_fields
-        ck = 'keine_'+contact.last_name.lower()
-        for field in fields:
-            if field.name == 'Campus-Kennung':
-                ck_n = field.value.strip().lower()
-                if ck_n:
-                    ck = ck_n
-                else:
-                    log.debug('Contact [%s] found, has no Campus-Kennung')
-                    store_users_without_campus_kennung[contact.id] = {
-                        'name': contact.name,
-                        'email': contact.email,
-                        'projects': contact.projects
-                    }
-        log.debug("add %s to all_contacts", ck)
-        all_contacts[ck] = contact
+        if not contact.is_company:
+            fields = contact.custom_fields
+            ck = 'keine_'+contact.last_name.strip().lower()
+            for field in fields:
+                if field.name == 'Campus-Kennung':
+                    ck_n = field.value.strip().lower()
+                    if ck_n and ck_n == ck:
+                        log.debug('Contact [%s] found, has no formal Camus-Kennung but informal placeholder "%s"', contact.id, ck)
+                    elif ck_n:
+                        ck = ck_n
+                    else:
+                        log.debug('Contact [%s] found, has no Campus-Kennung', contact.id)
+                        store_users_without_campus_kennung[contact.id] = {
+                            'name': contact.last_name,
+                            'email': contact.emails,
+                            'projects': contact.projects
+                        }
+            log.debug("add %s to all_contacts", ck)
+            all_contacts[ck] = contact
 
     log.info(u"Anzahl an bekannten Kontakten: %s", str(len(all_contacts)))
 
@@ -158,7 +189,7 @@ def update_projects(group_file_path, structure_file_path):
 
     # Internal Dictionaries for Groups with Projects and Members
     # (old, new for comparison reasons)
-    old_fgm_data = {}
+    old_fgm_data = {}  # later directly overwritten by json data from wiki page
     new_fgm_data = {}
 
     wiki_fgm = redmine.wiki_page.get(
@@ -169,19 +200,22 @@ def update_projects(group_file_path, structure_file_path):
 
     # strip all additional Redmine markup (Redmine-Tweaks) from wiki-page
     # so that we have only JSON data
-    wiki_text = wiki_text.replace('{{fnlist}}', '')
-    wiki_text = wiki_text.replace('<div id="wiki_extentions_footer">', '')
-    wiki_text = wiki_text.replace('---', '')
-    wiki_text = wiki_text.replace('{{lastupdated_at}} von {{lastupdated_by}}', '')
-    wiki_text = wiki_text.replace('</div>', '')
+    wiki_common_footer_elems = ['{{fnlist}}',
+                                '<div id="wiki_extentions_footer">',
+                                '---',
+                                '{{lastupdated_at}} von {{lastupdated_by}}'
+                                '</div>',
+                                '<pre><code class="json">',
+                                '</code></pre>']
+    for elem in wiki_common_footer_elems:
+        wiki_text = wiki_text.replace(elem, '')
     wiki_text = wiki_text.strip()
-
-    log.debug(u"Content of Auto-Fiona-Gruppen-Mitglieder Wiki Seite:\n%s", pformat(wiki_text))
-
-    if log.getEffectiveLevel() == logging.DEBUG:
-        time.sleep(60)
-
     old_fgm_data = json.loads(wiki_text)
+
+    log.debug(u"Content of Auto-Fiona-Gruppen-Mitglieder Wiki Seite read into JSON:\n%s", pformat(old_fgm_data))
+
+    if log.getEffectiveLevel() == logging.DEBUG: # make it possible to read debug message of wiki_text
+        time.sleep(60)
 
     # 1.2. Read NEW Fionagruppen and group membership data from input file
     log.debug("Try to open file: %s", group_file_path)
@@ -242,9 +276,7 @@ def update_projects(group_file_path, structure_file_path):
                         for prefix_project in prefix_projects:
                             try:
                                 project = redmine.project.get(prefix_project.strip())
-                                new_fgm_data[c_group_name]['projects'].append(
-                                    {'id': project.id,
-                                     'fiona_id': project.identifier})
+                                new_fgm_data[c_group_name]['projects'] = new_fgm_data[c_group_name].get('projects', []).append(project.identifier)
                                 log.debug('Add project: "%s" to group: "%s"', project.identifier, c_group_name)
                             except ResourceNotFoundError as e:
                                 log.error(u'No Project with id "%s" found', prefix_project)
@@ -378,7 +410,7 @@ def update_projects(group_file_path, structure_file_path):
     log.info('Begin: Auto-Fiona-Gruppen-Prefix-Zuordnung Step')
 
     wiki_group_ignore = redmine.wiki_page.get(
-        'Auto-Fiona-Gruppen-Prefix-Zuordnung',
+        'Auto-Fiona-Gruppen-Ignore',
         project_id=rmaster_project.id)
 
     wiki_group_ignore_text = wiki_group_ignore.text
@@ -390,7 +422,7 @@ def update_projects(group_file_path, structure_file_path):
                 del new_fgm_data[l_group]
 
     wiki_group_temp_ignore = redmine.wiki_page.get(
-        'Auto-Fiona-Gruppen-Prefix-Zuordnung',
+        'Auto-Fiona-Gruppen-Temp-Ignore',
         project_id=rmaster_project.id)
 
     wiki_group_temp_ignore_text = wiki_group_temp_ignore.text
@@ -409,141 +441,290 @@ def update_projects(group_file_path, structure_file_path):
             store_group_with_no_members.append(l_group_key)
         if l_group_value['projects'] and l_group_value['members']:
             for project in l_group_value['projects']:
-                store_project_data[project] = store_project_data.get(project, []).append(project)  # NOQA
+                store_project_data[project] = store_project_data.get(project, []).append(l_group_key)  # NOQA
 
     # 3.1. Compare old and new Fiona Group Data
-    for entry in new_fgm_data:
-        if entry in old_fgm_data:
-            differences = set(new_fgm_data[entry]['members']) - set(old_fgm_data[entry]['members'])  # NOQA
-            if differences:
-                log.warn(differences)
-            # diff_store_member
+    for group_entry in new_fgm_data:
+        if group_entry in old_fgm_data:
+            new_members = set(new_fgm_data[group_entry]['members']) - set(old_fgm_data[group_entry]['members'])  # NOQA
+            removed_members = set(old_fgm_data[group_entry]['members']) - set(new_fgm_data[group_entry]['members'])  # NOQA
+            if new_members:
+                store_new_members_in_group[group_entry] = new_members
+                log.warn('Found new members in group "%s": ', group_entry, ', '.join(new_members))
+            if removed_members:
+                store_removed_members_in_group[group_entry] = new_members
+                log.warn('Found removed members in group "%s": ', group_entry, ', '.join(removed_members))
         else:
             # diff_store_groups
-            log.warn("%s not known till today", entry)
+            log.warn('group "%s" not known till today', group_entry)
+            store_new_groups.append(group_entry)
+    store_new_groups = set(new_fgm_data.keys()) - set(old_fgm_data.keys())
+    store_removed_groups = set(old_fgm_data.keys()) - set(new_fgm_data.keys())
+    if store_new_groups:
+        log.warn('Found new groups: %s', ', '.join(store_new_groups))
+    if store_removed_groups:
+        log.warn('Found removed groups: %s', ', '.join(store_removed_groups))
 
-    # 3.2.
+
+    # 3.2. Write Fionagroup Information into Webproject
     for project_key, groups in store_project_data.iteritems():
         l_project = redmine.project.get(project_key)
+        l_project_contacts = l_project.contacts
+        l_project_contacts_cks = []
+        for l_contact in l_project_contacts:
+            if not contact.is_company:
+                fields = l_contact.custom_fields
+                ck = 'keine_'+contact.last_name.strip().lower()
+                for field in fields:
+                    if field.name == 'Campus-Kennung':
+                        ck_n = field.value.strip().lower()
+                        if ck_n and ck_n == ck:
+                            log.debug('Contact [%s] found, has no formal Camus-Kennung but informal placeholder "%s"', contact.id, ck)
+                        elif ck_n:
+                            ck = ck_n
+                        else:
+                            log.debug('Contact [%s] found, has no Campus-Kennung set', contact.id)
+                        l_project_contacts_cks.append(ck)
+        l_fiona_contacts_ck = []
+        for group in groups:
+            l_fiona_contacts_ck.extend(new_fgm_data[group].get('members',[]))
 
+        l_new_contacts = set(l_fiona_contacts_ck) - set(l_project_contacts_cks)
+        l_removed_contacts = set(l_project_contacts_cks) - set(l_fiona_contacts_ck)
+        store_project_added_members[project_key] = l_new_contacts
+        store_project_removed_members[project_key] = l_removed_contacts
 
+        if l_new_contacts:
+            for l_ck in l_new_contacts:
+                l_contact = all_contacts.get(l_ck)
+                if l_contact:
+                    l_contact.project.add(project_key)
 
+        if l_removed_contacts:
+            for l_ck in l_removed_contacts:
+                l_contact = all_contacts.get(l_ck)
+                if l_contact:
+                    l_contact.project.remove(project_key)
 
+        # write wiki-page fionagruppen
+        content = 'h1. Fionagruppen\n\n'
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        for group in groups:
+            content += '\n\nh2. {group}\n\n'.format(group=group)
+            for member_ck in new_fgm_data[group]['members']:
+                contact = all_contacts.get(member_ck.lower())
+                if contact:
+                    content += '* {{contact(%s)}}: %s \n' % (contact.id, member_ck)
+                else:
+                    content += '* {ck}'.format(id=member_ck)
 
                 try:
-                    #myproject = redmine.project.get(fiona_id)
-                    content = """
-h1. Fionagruppen
+                    page = redmine.wiki_page.get('Fionagruppen',project_id=l_project.id)
+                    redmine.wiki_page.update('Fionagruppen',
+                                             project_id=l_project.id,
+                                             title='Fionagruppen',
+                                             text=content)
+                except ResourceNotFoundError:
+                    redmine.wiki_page.create(project_id=l_project.id,
+                                             title='Fionagruppen',
+                                             text=content)
+
+    # Write datastore for fiona group information
+    wiki_fgm.text = '<pre><code class="json">{json}</code></pre>'.format(pformat(json.dumps(new_fgm_data)))
+    wiki_fgm.comment = 'Import from ' + str(today.isoformat())
+    wiki_fgm.save()
 
 
-"""
+    # Process all Projects and check if wegweiser exists and create it if not
+    _all_projects = redmine.project.all()
 
-                    groups = user_data.split('#')
-
-                    for group in groups:
-                        if group != '' and group != 'all_users':
-                            new_fgm_data[group]['projects'].append({'id':myproject.id, 'identifier': myproject.identifier})
+    wiki_webprojects_wegweiser = redmine.wiki_page.get('Auto-Webprojekt_Wegweiser_new', project_id=rmaster_project.id)
+    wiki_projects_wegweiser = redmine.wiki_page.get('Auto-Projekt_Wegweiser', project_id=rmaster_project.id)
 
 
 
-                            #
-                            #for c_group in new_fgm_data.keys():
-                            #
-                            #    c_members = new_fgm_data[c_group]
-                            #content += "\n\nh2. " + group_name + "\n\n"
-                            #for user in user_ids:
-                            #    #contact = redmine.contact.get()
-                            #    if user != '':
-                            #        contact = all_contacts.get(user.lower())
-#
-#                                    if contact:
-#
-#                                        content += "* {{contact(%s)}}: %s \n" % (contact.id, user)  # NOQA#
-#
-#                                        contact.project.add(myproject.id)
-#
-#                                    else:
-#                                        content += "* " + user + "\n"
-#                                        error_message = error_store.get(user, {})
-#                                        e_webauftritt = error_message.get('Webauftritt', [])
-#                                        e_webauftritt.append(myproject.identifier)
-#                                        e_group = error_message.get('Group',[])
-#                                        e_group.append(group_name)
-#
-#                                        error_store[user] = {'Webauftritt': e_webauftritt, 'Group': e_group}
-
-                    try:
-                        page = redmine.wiki_page.get('Fionagruppen',project_id=myproject.id)
-                        redmine.wiki_page.update('Fionagruppen',
-                                                 project_id=myproject.id,
-                                                 title='Fionagruppen',
-                                                 text=content)
-                    except ResourceNotFoundError, e:
-                        redmine.wiki_page.create(project_id=myproject.id,
-                                                 title='Fionagruppen',
-                                                 text=content)
-
-                except ValidationError as e:
-                    log.error("Error on %s with error: %s", fiona_id, e.message)
-                except ResourceNotFoundError, e:
-                    pass
+    for project in _all_projects:
+        try:
+            redmine.wiki_page.get('wegweiser', project_id=project.id)
+        except ResourceNotFoundError:
+            if project.parent and project.parent.parent and project.parent.parent.id == rmaster_project.id:  # Webprojekt
+                redmine.wiki_page.create(project_id=project.id, title='wegweiser', text=wiki_webprojects_wegweiser_text)
+            else:  # Normales Projekt
+                redmine.wiki_page.create(project_id=project.id, title='wegweiser', text=wiki_projects_wegweiser_text)
 
 
     # 4. Fehlerprotokolle
-    wiki_fgm.text = json.dumps(new_fgm_data)
-    wiki_fgm.comment = 'Import from ' + str(time_stamp)
-    wiki_fgm.save()
 
-    if error_store:
+    support_project = redmine.project.get('support')
+    office_project = redmine.project.get('office')
+    teams = redmine.group.all()
+    support_team = None
+    koordinations_team = None
+    for team in teams:
+        if team.name == 'Support':
+            support_team = team
+        elif team.name == 'Koordination':
+            koordinations_team = team
+
+
+    # 4.1a. New User (Campus-Kennung) not known
+    if store_new_users:
         error_message = """Folgende User sind unbekannt:
 
 |_.Campus-Kennung |_.Fionagruppen |_.Projekte |
 """
-        for message in error_store:
+        for new_user_ck, values in store_new_users.iteritems():
             error_message += '| {ck} | {groups} | {projects} |\n'.format(
-                ck=message,
-                groups=', '.join(set(error_store[message]['Group'])),
-                projects=', '.join(set(error_store[message]['Webauftritt'])))
-        support_project = redmine.project.get('support')
-        teams = redmine.group.all()
-        support_team = None
-        for team in teams:
-            if team.name == 'Support':
-                support_team = team
-                break
-        redmine.issue.create(
+                ck=new_user_ck,
+                groups=', '.join(set(values.get('groups', []))),
+                projects=', '.join(set(values.get('projects', [])))
+            )
+        ticket_nu = redmine.issue.create(
             project_id=support_project.id,
-            subject='Unbekannte Nutzer bei Import ' + str(time_stamp),
+            subject='Unbekannte Nutzer bei Import ' + str(today.isoformat()),
             description=error_message,
             assigned_to_id=support_team.id)
+
+    # 4.1b. Existing Users with no Campus-Kennung
+    if store_users_without_campus_kennung:
+        error_message = """Folgende User haben keine Campus-Kennung:
+
+|_.User-ID |_.Name |_.E-Mail |_.Projekte |
+"""
+        for user_id, values in store_users_without_campus_kennung.iteritems():
+            error_message += '| {id} | {name} | {email} | {projects} |\n'.format(
+                id='{{contact_plain(%s)}}' % str(user_id),
+                name=values.get('name', ''),
+                email=values.get('email', ''),
+                projects=', '.join(set(values.get('projects', [])))
+            )
+        ticket_nck = redmine.issue.create(
+            project_id=support_project.id,
+            subject='Kontak ohne Campus-Kennung bei Import ' + str(today.isoformat()),
+            description=error_message,
+            assigned_to_id=support_team.id)
+
+    # 4.2. New Group
+    if store_new_groups:
+        error_message = 'Folgende Gruppen sind neu:\n\n* '
+        error_message += '\n* '.join(store_new_groups)
+        ticket_ng = redmine.issue.create(
+            project_id=support_project.id,
+            subject='Neue Gruppe bei Import ' + str(datetime.date.isoformat(time_stamp)),
+            description=error_message,
+            assigned_to_id=support_team.id)
+
+    # 4.3. New Projects
+    if store_new_projects:
+        error_message = 'Folgende Projekte sind neu:\n\n* '
+        error_message += '\n* '.join(store_new_projects)
+        ticket_np = redmine.issue.create(
+            project_id=office_project.id,
+            subject='Neue Projekte bei Import ' + str(datetime.date.isoformat(time_stamp)),
+            description=error_message,
+            assigned_to_id=koordinations_team.id)
+
+    # 4.4. Removed Projects
+    if store_removed_projects:
+        error_message = 'Folgende Projekte sind in Fiona weggefallen:\n\n* '
+        error_message += '\n* '.join(store_removed_projects)
+        ticket_rp = redmine.issue.create(
+            project_id=office_project.id,
+            subject='In Fiona als entfernt gemeldete Projekte bei Import ' + str(today.isoformat()),
+            description=error_message,
+            assigned_to_id=koordinations_team.id)
+
+    # 4.5. Group with no Projects
+    if store_group_with_no_projects:
+        error_message = 'Folgende Gruppen sind keinem Projekt zugenordnet:\n\n* '
+        error_message += '\n* '.join(store_group_with_no_projects)
+        ticket_gwnp = redmine.issue.create(
+            project_id=office_project.id,
+            subject='Gruppen ohne Projekte bei Import ' + str(today.isoformat()),
+            description=error_message,
+            assigned_to_id=koordinations_team.id)
+
+    # 4.6. Group with no Members
+    if store_group_with_no_members:
+        error_message = 'Folgenden Gruppen sind keine Kontakte zugeordnet:\n\n* '
+        error_message += '\n* '.join(store_group_with_no_members)
+        ticket_gwnm = redmine.issue.create(
+            project_id=support_project.id,
+            subject='Gruppen ohne Mitglieder bei Import ' + str(today.isoformat()),
+            description=error_message,
+            assigned_to_id=support_team.id)
+        wiki_group_temp_ignore_text += '\n* ' + '\n* '.join(store_group_with_no_members)
+        wiki_group_temp_ignore.text = wiki_group_temp_ignore_text
+        wiki_group_temp_ignore.comments = 'Update on Fiona Import on {date}'.format(date=today.isoformat())
+        wiki_group_temp_ignore.save()
+
+    end_time_stamp = datetime.datetime.now()
+
+    # 5. Wiki Log of Import
+    content = 'h1. Log of Fiona Data Import {date}\n\nStart-Time: {begin_time}\nEnd-Time: {end_date}\n\n \{\{toc\}\}\n\n'.format(
+        date=today.isoformat(),
+        begin_time=begin_time_stamp.strftime(datefmt),
+        end_date=end_time_stamp.strftime(datefmt)
+    )
+    # Project Specific Logs
+    if store_new_projects or store_removed_projects or store_updated_projects or \
+        store_project_added_groups or store_project_removed_groups or \
+        store_project_added_members or store_project_removed_members:
+        content += '\n\nh2. Projektbezogene Meldungen'
+
+    if store_new_projects:
+        content += '\n\nh3. Neue Projekte beim Import (siehe #{ticket_id})\n\n* '.format(ticket_id=ticket_np) + '\n* '.join(store_new_projects)
+
+    if store_removed_projects:
+        content += '\n\nh3. Projekte die seit dem letzten Import in Fiona weggefallen sind (siehe #{ticket_id})\n\n* '.format(ticket_id=ticket_rp) + '\n* '.join(store_removed_projects)
+
+    if store_updated_projects:
+        content += '\n\nh3. Veränderungen an Webprojekt-Daten\n\n'
+        content += '|_.Projekt |_.Alter Titel |_.Neuer Titel |_.Alter Status |_.Neuer Status |_. Alte Stprachen |_. Neue Sprachen |\n'
+        for project, changes in store_updated_projects.iteritems():
+            content += '| {project} | {old_title} | {new_title} | {old_status} | {new_status} | {old_langs} | {new_langs} |\n'.format(
+                project=project,
+                old_title=changes.get('', ''),
+                new_title=changes.get('', ''),
+                old_status=changes.get('', ''),
+                new_status=changes.get('', ''),
+                old_langs=', '.join(changes.get('', [])),
+                new_langs=', '.join(changes.get('', [])),
+            )
+
+    if store_project_added_groups:
+        content += '\n\nh3. Zu Webprojekten hinzugefügte Gruppen\n\n'
+        for project, groups in store_project_added_groups.iteritems():
+            content += '* {project}\n** ' + '\n** '.join(groups)
+
+    if store_project_removed_groups:
+        content += '\n\nh3. Aus Webprojekten entfernte Gruppen\n\n'
+        for project, groups in store_project_removed_groups.iteritems():
+            content += '* {project}\n** ' + '\n** '.join(groups)
+
+    if store_project_added_members:
+        content += '\n\nh3. Zu Webprojekten hinzugefügte Fiona-Kontakte\n\n'
+        for project, members in store_project_added_members.iteritems():
+            content += '\n* {project}\n'
+            for member in members:
+                l_contact = all_contacts.get(member)
+                if l_contact:
+                    content += '\n** {{contact_plain(%s)}}' % l_contact.id
+                else:
+                    content += '\n** ' + member
+
+    if store_project_removed_members:
+        content += '\n\nh3. Aus Weprojekten entfernte Fione-Kontakte\n\n'
+        for project, members in store_project_removed_members.iteritems():
+            content += '* {project}\n** ' + '\n** '.join(members)
+
+
+
+    redmine.wiki_page.create(
+        project_id=rmaster_project.id,
+        title='Fiona-Import-Log-{date}'.format(today.isoformat()),
+        text=content
+    )
 
 if __name__ == "__main__":
     if len(sys.argv) > 2:
