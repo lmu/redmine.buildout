@@ -573,13 +573,17 @@ def update_projects(_group_file_path, _structure_file_path):
     wiki_projects_wegweiser_text = wiki_projects_wegweiser_text.strip()
 
     for project in _all_projects:
+        identifier = project.identifier
         try:
-            redmine.wiki_page.get('wegweiser', project_id=project.id)
+            redmine.wiki_page.get('wegweiser', project_id=identifier)
         except ResourceNotFoundError:
-            if project.parent and project.parent.parent and project.parent.parent.id == rmaster_project.id:  # Webprojekt
-                redmine.wiki_page.create(project_id=project.id, title='wegweiser', text=wiki_webprojects_wegweiser_text)
+            if identifier in store_fiona_projects:  # Webprojekt
+                redmine.wiki_page.create(project_id=identifier, title='wegweiser', text=wiki_webprojects_wegweiser_text)
             else:  # Normales Projekt
-                redmine.wiki_page.create(project_id=project.id, title='wegweiser', text=wiki_projects_wegweiser_text)
+                redmine.wiki_page.create(project_id=identifier, title='wegweiser', text=wiki_projects_wegweiser_text)
+        if identifier not in store_fiona_projects and identifier not in store_fiona_special_projects:
+            store_no_webproject_projects.append(identifier)
+
 
     # 4. Fehlerprotokolle
     support_project = redmine.project.get('support')
@@ -597,9 +601,10 @@ def update_projects(_group_file_path, _structure_file_path):
     ticket_np = 0  # Ticket ID: New Projects
     ticket_rp = 0  # Ticket ID: Removed Projects
     ticket_ng = 0  # Ticket ID: New Groups
-    # ticket_rg = 0  # Ticket ID: Removed Groups
-    ticket_gwnm = 0  # Ticket ID: Group with new Members
-    ticket_gwnp = 0  # Ticket ID: Group with new Projects
+    ticket_rg = 0  # Ticket ID: Removed Groups
+    ticket_gwnm = 0  # Ticket ID: Group with no Members
+    ticket_gwnp = 0  # Ticket ID: Group with no Projects
+    ticket_nmg = 0  # Ticket ID: Group with new Members
     ticket_nu = 0  # Ticket ID: New Users
     ticket_nck = 0  # Ticket ID: Users with Campus-Kennung not set
 
@@ -772,15 +777,15 @@ def update_projects(_group_file_path, _structure_file_path):
             content += u'\n* '.join(store_removed_groups)
 
         if store_group_with_no_projects:
-            content += u'\n\nh3. Folgende Gruppen haben sind keinem Projekt zugeordnet\n\n* '
+            content += u'\n\nh3. Folgende Gruppen haben sind keinem Projekt zugeordnet (siehe #{ticket_id})\n\n* '.format(ticket_id=ticket_gwnp)
             content += u'\n* '.join(store_group_with_no_projects)
 
-        if store_group_with_no_projects:
-            content += u'\n\nh3. Folgenden Gruppen sind keine Mitglieder zugeordnet, sie wurden Auto-Fiona-Group-Temp-Ignore hinzugefügt\n\n* '
+        if store_group_with_no_members:
+            content += u'\n\nh3. Folgenden Gruppen sind keine Mitglieder zugeordnet, sie wurden Auto-Fiona-Group-Temp-Ignore hinzugefügt (siehe #{ticket_id})\n\n* '.format(ticket_id=ticket_gwnm)
             content += u'\n* '.join(store_group_with_no_members)
 
         if store_new_members_in_group:
-            content += u'\n\nh3. Folgende Gruppen haben neue Mitglieder\n\n* '
+            content += u'\n\nh3. Folgende Gruppen haben neue Mitglieder (siehe #{ticket_id})\n\n* '.format(ticket_id=ticket_nmg)
             for group, members in store_new_members_in_group:
                 content += u'\n* {group}\n** '.format(group=group) + '\n** '.join(members)
 
@@ -799,7 +804,6 @@ def update_projects(_group_file_path, _structure_file_path):
         if store_prefix_nonexisting_group:
             content += "\n\nh3. Wiki-Page [[%s:%s]] enthält Gruppen die nicht existieren\n\n* "
             content += '\n* '.join(store_prefix_nonexisting_group)
-
 
     redmine.wiki_page.create(
         project_id=rmaster_project.id,
