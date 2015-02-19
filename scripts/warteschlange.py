@@ -30,6 +30,7 @@ elif hostname == 'redmine1':
 
 # from ConfigParser import SafeConfigParser
 from redmine import Redmine
+from pprint import pformat
 
 import datetime
 import logging
@@ -68,34 +69,32 @@ redmine = Redmine(
 
 log.info("Connecting to Redmine Instance %s ", redmine.url)
 
-#tags = redmine.contact_tag.all()
-
 statuses = redmine.issue_status.all()
 
 todo_id = 0
 warteschlange_id = 0
 for status in statuses:
-    if status.name == 'Todo':
+    if status.name == 'To Do':
         todo_id = status.id
     elif status.name == 'Warteschlange':
         warteschlange_id = status.id
 
 issues = redmine.issue.filter(
-    status=todo_id,
-    start_date=">{date}".format(date=today.isoformat())
+    status_id=todo_id,
+    start_date=">={date}".format(date=today.isoformat())
 )
 
 for issue in issues:
     log.info('Move Issue "%s" to Warteschlange', issue.id)
-    issue.status = warteschlange_id
+    issue.status_id = warteschlange_id
     issue.save()
 
 issues = redmine.issue.filter(
-    status=todo_id,
+    status_id=warteschlange_id,
     start_date="<={date}".format(date=today.isoformat())
 )
 
 for issue in issues:
     log.info('Move Issue "%s" to Todo', issue.id)
-    issue.status = todo_id
+    issue.status_id = todo_id
     issue.save()

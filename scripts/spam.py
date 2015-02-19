@@ -30,6 +30,7 @@ elif hostname == 'redmine1':
 
 # from ConfigParser import SafeConfigParser
 from redmine import Redmine
+from pprint import pformat
 
 import datetime
 import logging
@@ -76,21 +77,38 @@ new_tag = 'Neuer Kontakt'
 
 new_contacts = redmine.contact.filter(tags=new_tag)
 for contact in new_contacts:
-    log.info(
-        'Found Contact "%s" in Tag: "%s" with e-mail: $s',
-        contact.id,
+
+    #import ipdb; ipdb.set_trace()
+    log.debug(
+        u'Found Contact "%s" in Tag: "%s" with e-mail: %s and tags: %s',
+        str(contact.id),
         new_tag,
-        ', '.join(contact.emails)
+        ', '.join(contact.emails),
+        ', '.join(contact.tag_list),
     )
-    if not contact.issues:
-        contact.tags = spam_tag
+
+    if not len(getattr(contact, 'issues', [])) and not len(getattr(contact, 'notes', [])):
+        log.info(
+            u'Found Contact "%s" in Tag: "%s" with e-mail: %s having no open Issues and no Notes. Move to SPAM.',
+            str(contact.id),
+            new_tag,
+            ', '.join(contact.emails)
+        )
+        contact.tag_list = [spam_tag.lower(),'Test']
+        log.info('Changes: %s', pformat(contact._changes))
         contact.save()
 
         contact.project.add('spam')
+
+        contact = contact.refresh()
         projects = contact.projects
         for project in projects:
-            if project.identfier != 'spam':
-                contact.project.remove(project.identfier)
+            #project = project.refresh()
+            #import ipdb; ipdb.set_trace()
+            identifier = project.refresh().identifier
+            if identifier != 'spam':
+                log.info('Removed from project: %s', identifier)
+                contact.project.remove(identifier)
         log.info(
             'Contact "%s" moved into project: spam',
             contact.id
