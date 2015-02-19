@@ -79,13 +79,14 @@ for status in statuses:
 
 issues = redmine.issue.filter(
     status_id=todo_id,
-    start_date=">={date}".format(date=today.isoformat())
+    start_date=">={date}".format(date=(today+datetime.timedelta(days=1)).isoformat())  # could not check only greater so do tomorrow
 )
 
 for issue in issues:
-    log.info('Move Issue "%s" to Warteschlange', issue.id)
-    issue.status_id = warteschlange_id
-    issue.save()
+    if issue.start_date != today.isoformat():
+        log.info('Move Issue "%s" to Warteschlange', issue.id)
+        issue.status_id = warteschlange_id
+        issue.save()
 
 issues = redmine.issue.filter(
     status_id=warteschlange_id,
