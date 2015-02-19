@@ -12,28 +12,24 @@ if hostname == 'Pumukel-GNU-Tablet':
         '/usr/local/Plone/buildout-cache/eggs/ipdb-0.8-py2.7.egg',
         '/usr/local/Plone/buildout-cache/eggs/requests-2.3.0-py2.7.egg',
     ]
-elif hostname == 'redmine1':
+elif hostname.startswith('redmine'):
     sys.path[0:0] = [
         '/data/buildout-cache/eggs/python_redmine-1.0.1-py2.6.egg',
         '/data/buildout-cache/eggs/ipython-1.2.1-py2.6.egg',
-        #'/data/buildout-cache/eggs/ipdb-0.8-py2.6.egg',
+        # '/data/buildout-cache/eggs/ipdb-0.8-py2.6.egg',
         '/data/buildout-cache/eggs/requests-2.3.0-py2.6.egg',
     ]
 
-# from ConfigParser import SafeConfigParser
 from redmine import Redmine
 from redmine.exceptions import ResourceNotFoundError
-from redmine.exceptions import ValidationError
 from pprint import pformat
 
 import csv
-import json
 import datetime
-import os.path
-# import pprint
-import time
-
+import json
 import logging
+import os.path
+import time
 
 
 def update_projects(group_file_path, structure_file_path):
@@ -62,28 +58,34 @@ def update_projects(group_file_path, structure_file_path):
     begin_time_stamp = datetime.datetime.now()
 
     # Setup Internal Storage Variables for later Messaging trough Redmine - error-logs
+    # Contact related
+    store_new_users = {}  # {campus_kennung : {'projects': [], 'groups': []}] <-- from Fiona group file
+    store_users_without_campus_kennung = {}  # from all_contacts --> { contact_id : { name: _, email: -, projects: [] }
+    # project related
     store_new_projects = []  # [project_identifiers] <-- from Fiona structure file
     store_removed_projects = []  # [project_identfier]
     store_updated_projects = {}  # { project_identifiers : { change_field_old/new: changed_value_old/new } }
-    store_new_users = {}  # {campus_kennung : {'projects': [], 'groups': []}] <-- from Fiona group file
-    store_users_without_campus_kennung = {}  # from all_contacts --> { contact_id : { name: _, email: -, projects: [] }
-    store_prefix_nonexisting_project = []  # [project_identifiers]
-    store_prefix_nonexisting_group = []  # [group_names]
-    store_group_with_no_projects = []  # [group_names]
-    store_group_with_no_members = []  # [group_names]
-    store_new_groups = []  # [group_names]
-    store_removed_groups = []  # [group_names]
-    store_new_members_in_group = {}  # {group_name: [members]}
-    store_removed_members_in_group = {}  # {group_name: [members]}
     store_project_added_groups = {}  # {project_identifier: [group]}
     store_project_removed_groups = {}  # {project_identifier: [group]}
     store_project_added_members = {}  # {project_identifier: [campus-kennung]}
     store_project_removed_members = {}  # {project_identifier: [campus-kennung]}
-    store_no_fiona_contacts = []  # [campus-kennung]
-    store_no_fiona_projects = []  # [project_identifier]
-    store_no_webproject_projects = []  # [project_identifier]
+    # group related
+    store_new_groups = []  # [group_names]
+    store_removed_groups = []  # [group_names]  # NOQA
+    store_new_members_in_group = {}  # {group_name: [members]}
+    store_removed_members_in_group = {}  # {group_name: [members]}
+    store_group_with_no_projects = []  # [group_names]
+    store_group_with_no_members = []  # [group_names]
+    # Fiona Group prefix error store
+    store_prefix_nonexisting_project = []  # [project_identifiers]
+    store_prefix_nonexisting_group = []  # [group_names]
     # special stores - no error log
     store_project_data = {}  # {project_idetifier : [group_names]}
+    store_fiona_contacts = []  # [campus-kennung]
+    store_no_fiona_contacts = []  # [campus-kennung]
+    store_fiona_projects = []  # [project_identifier]
+    store_no_fiona_projects = []  # [project_identifier]
+    store_no_webproject_projects = []  # [project_identifier]
 
     # Special Wiki-Pages from Redmine for processing:
     # 1. Auto-Fiona-Gruppen-Mitglieder
@@ -100,11 +102,11 @@ def update_projects(group_file_path, structure_file_path):
 
     # Setup Redmine-Connector:
     redmine = Redmine(
-        #'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
+        # 'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
         'https://localhost/internetdienste/',
-        #'http://localhost/internetdienste/',
-        #username='admin',
-        #password='admin',
+        # 'http://localhost/internetdienste/',
+        # username='admin',
+        # password='admin',
         key='6824fa6b6ad10fa4828e003faf793a2260688486',
         requests={'verify': False})
 
@@ -155,7 +157,7 @@ def update_projects(group_file_path, structure_file_path):
     for contact in _all_contacts:
         if not contact.is_company:
             fields = contact.custom_fields
-            ck = 'keine_'+contact.last_name.strip().lower()
+            ck = 'keine_' + contact.last_name.strip().lower()
             for field in fields:
                 if field.name == 'Campus-Kennung':
                     ck_n = field.value.strip().lower()
@@ -189,7 +191,7 @@ def update_projects(group_file_path, structure_file_path):
 
     # Internal Dictionaries for Groups with Projects and Members
     # (old, new for comparison reasons)
-    old_fgm_data = {}  # later directly overwritten by json data from wiki page
+    # old_fgm_data = {}  # later directly overwritten by json data from wiki page
     new_fgm_data = {}
 
     wiki_fgm = redmine.wiki_page.get(
@@ -214,7 +216,7 @@ def update_projects(group_file_path, structure_file_path):
 
     log.debug(u"Content of Auto-Fiona-Gruppen-Mitglieder Wiki Seite read into JSON:\n%s", pformat(old_fgm_data))
 
-    if log.getEffectiveLevel() == logging.DEBUG: # make it possible to read debug message of wiki_text
+    if log.getEffectiveLevel() == logging.DEBUG:  # make it possible to read debug message of wiki_text
         time.sleep(60)
 
     # 1.2. Read NEW Fionagruppen and group membership data from input file
@@ -234,12 +236,10 @@ def update_projects(group_file_path, structure_file_path):
                 for mitglied in gruppenmitglieder:
                     user = mitglied.strip().lower()
                     if user != "":
-                        #contact_mitglied = all_contacts.get(mitglied.lower())
                         members.append(user)
                         if user not in all_contacts:
                             l_group = store_new_users.get(user, {})
                             e_webauftritt = l_group.get('projects', [])
-                            #e_webauftritt.append(project.identifier)
                             e_group = l_group.get('groups', [])
                             e_group.append(gruppenname)
 
@@ -278,7 +278,7 @@ def update_projects(group_file_path, structure_file_path):
                                 project = redmine.project.get(prefix_project.strip())
                                 new_fgm_data[c_group_name]['projects'] = new_fgm_data[c_group_name].get('projects', []).append(project.identifier)
                                 log.debug('Add project: "%s" to group: "%s"', project.identifier, c_group_name)
-                            except ResourceNotFoundError as e:
+                            except ResourceNotFoundError:
                                 log.error(u'No Project with id "%s" found', prefix_project)
                                 store_prefix_nonexisting_project.append(prefix_project)
 
@@ -289,10 +289,10 @@ def update_projects(group_file_path, structure_file_path):
                         new_fgm_data[group_name]['projects'].append(
                             {'id': project.id, 'fiona_id': project.identifier})
                         log.debug('Add project: "%s" to group: "%s"', project.identifier, group_name)
-                    except ResourceNotFoundError as e:
+                    except ResourceNotFoundError:
                         log.error(u'No Project with id "%s" found', prefix_project)
                         store_prefix_nonexisting_project.append(prefix_project)
-                    except KeyError as e:
+                    except KeyError:
                         log.error(u'A Group provided that is unknown: %s', group_name)
                         store_prefix_nonexisting_group.append(group_name)
 
@@ -303,7 +303,7 @@ def update_projects(group_file_path, structure_file_path):
     with open(structure_file_path, 'r') as csvfile_structure:
         reader = csv.DictReader(csvfile_structure, delimiter=';', quotechar='"')
 
-        #Fiona-Name;Fiona-Pfad;Playland-Titel;Erstellungsdatum;Status;URL;Sprache;Fionagruppe;  # NOQA
+        # Fiona-Name;Fiona-Pfad;Playland-Titel;Erstellungsdatum;Status;URL;Sprache;Fionagruppe;  # NOQA
         for row in reader:
             fiona_id = row.get('Fiona-Name')
             fiona_title = row.get('Playland-Titel')
@@ -342,7 +342,7 @@ def update_projects(group_file_path, structure_file_path):
                             l_message['status_new'] = nfval
                             fval = nfval
                     elif field.name == 'Sprache':
-                        nfval = row.get('Sprache', '')
+                        nfval = row.get('Sprache', [])
                         if nfval != fval:
                             log.debug('Update project: "%s" with new Language: "%s"', myproject.identifier, url)
                             l_message['lang_old'] = fval
@@ -355,7 +355,7 @@ def update_projects(group_file_path, structure_file_path):
                 if l_message:
                     store_updated_projects[myproject.identifier] = l_message
 
-            except ResourceNotFoundError as e:
+            except ResourceNotFoundError:
                 log.info('No Project with identifier: "%s" found, will be created', fiona_id)
                 store_new_projects.append(fiona_id)
                 if len(path_list) == 2:
@@ -426,6 +426,10 @@ def update_projects(group_file_path, structure_file_path):
         project_id=rmaster_project.id)
 
     wiki_group_temp_ignore_text = wiki_group_temp_ignore.text
+    # TODO
+    for elem in wiki_common_footer_elems:
+        wiki_text = wiki_text.replace(elem, '')
+    wiki_text = wiki_text.strip()
 
     for line in wiki_group_temp_ignore_text:
         if line.startswith('* '):
@@ -465,7 +469,6 @@ def update_projects(group_file_path, structure_file_path):
     if store_removed_groups:
         log.warn('Found removed groups: %s', ', '.join(store_removed_groups))
 
-
     # 3.2. Write Fionagroup Information into Webproject
     for project_key, groups in store_project_data.iteritems():
         l_project = redmine.project.get(project_key)
@@ -474,7 +477,7 @@ def update_projects(group_file_path, structure_file_path):
         for l_contact in l_project_contacts:
             if not contact.is_company:
                 fields = l_contact.custom_fields
-                ck = 'keine_'+contact.last_name.strip().lower()
+                ck = 'keine_' + contact.last_name.strip().lower()
                 for field in fields:
                     if field.name == 'Campus-Kennung':
                         ck_n = field.value.strip().lower()
@@ -519,7 +522,7 @@ def update_projects(group_file_path, structure_file_path):
                     content += '* {ck}'.format(id=member_ck)
 
                 try:
-                    page = redmine.wiki_page.get('Fionagruppen',project_id=l_project.id)
+                    redmine.wiki_page.get('Fionagruppen', project_id=l_project.id)
                     redmine.wiki_page.update('Fionagruppen',
                                              project_id=l_project.id,
                                              title='Fionagruppen',
@@ -534,6 +537,17 @@ def update_projects(group_file_path, structure_file_path):
     wiki_fgm.comment = 'Import from ' + str(today.isoformat())
     wiki_fgm.save()
 
+    for values in new_fgm_data.itervalues():
+        store_fiona_contacts.extend(values.get('members', []))
+        store_fiona_projects.extend(values.get('projects', []))
+
+    all_contacts_ck = set(all_contacts.keys())
+
+    store_no_fiona_contacts = all_contacts_ck - set(store_fiona_contacts)
+
+
+
+
 
     # Process all Projects and check if wegweiser exists and create it if not
     _all_projects = redmine.project.all()
@@ -541,7 +555,16 @@ def update_projects(group_file_path, structure_file_path):
     wiki_webprojects_wegweiser = redmine.wiki_page.get('Auto-Webprojekt_Wegweiser_new', project_id=rmaster_project.id)
     wiki_projects_wegweiser = redmine.wiki_page.get('Auto-Projekt_Wegweiser', project_id=rmaster_project.id)
 
+    wiki_webprojects_wegweiser_text = wiki_webprojects_wegweiser.text
+    wiki_projects_wegweiser_text = wiki_projects_wegweiser.text
 
+    for elem in wiki_common_footer_elems:
+        wiki_webprojects_wegweiser_text = wiki_webprojects_wegweiser_text.replace(elem, '')
+    wiki_webprojects_wegweiser_text = wiki_webprojects_wegweiser_text.strip()
+
+    for elem in wiki_common_footer_elems:
+        wiki_projects_wegweiser_text = wiki_projects_wegweiser_text.replace(elem, '')
+    wiki_projects_wegweiser_text = wiki_projects_wegweiser_text.strip()
 
     for project in _all_projects:
         try:
@@ -552,9 +575,7 @@ def update_projects(group_file_path, structure_file_path):
             else:  # Normales Projekt
                 redmine.wiki_page.create(project_id=project.id, title='wegweiser', text=wiki_projects_wegweiser_text)
 
-
     # 4. Fehlerprotokolle
-
     support_project = redmine.project.get('support')
     office_project = redmine.project.get('office')
     teams = redmine.group.all()
@@ -566,6 +587,15 @@ def update_projects(group_file_path, structure_file_path):
         elif team.name == 'Koordination':
             koordinations_team = team
 
+    # Ticket IDs for reference in Fiona-Import-Log
+    ticket_np = 0  # Ticket ID: New Projects
+    ticket_rp = 0  # Ticket ID: Removed Projects
+    ticket_ng = 0  # Ticket ID: New Groups
+    # ticket_rg = 0  # Ticket ID: Removed Groups
+    ticket_gwnm = 0  # Ticket ID: Group with new Members
+    ticket_gwnp = 0  # Ticket ID: Group with new Projects
+    ticket_nu = 0  # Ticket ID: New Users
+    ticket_nck = 0  # Ticket ID: Users with Campus-Kennung not set
 
     # 4.1a. New User (Campus-Kennung) not known
     if store_new_users:
@@ -610,7 +640,7 @@ def update_projects(group_file_path, structure_file_path):
         error_message += '\n* '.join(store_new_groups)
         ticket_ng = redmine.issue.create(
             project_id=support_project.id,
-            subject='Neue Gruppe bei Import ' + str(datetime.date.isoformat(time_stamp)),
+            subject='Neue Gruppe bei Import ' + str(today.isoformat()),
             description=error_message,
             assigned_to_id=support_team.id)
 
@@ -620,7 +650,7 @@ def update_projects(group_file_path, structure_file_path):
         error_message += '\n* '.join(store_new_projects)
         ticket_np = redmine.issue.create(
             project_id=office_project.id,
-            subject='Neue Projekte bei Import ' + str(datetime.date.isoformat(time_stamp)),
+            subject='Neue Projekte bei Import ' + str(today.isoformat()),
             description=error_message,
             assigned_to_id=koordinations_team.id)
 
@@ -661,7 +691,7 @@ def update_projects(group_file_path, structure_file_path):
     end_time_stamp = datetime.datetime.now()
 
     # 5. Wiki Log of Import
-    content = 'h1. Log of Fiona Data Import {date}\n\nStart-Time: {begin_time}\nEnd-Time: {end_date}\n\n \{\{toc\}\}\n\n'.format(
+    content = u'h1. Log of Fiona Data Import {date}\n\nStart-Time: {begin_time}\nEnd-Time: {end_date}\n\n \{\{toc\}\}\n\n'.format(
         date=today.isoformat(),
         begin_time=begin_time_stamp.strftime(datefmt),
         end_date=end_time_stamp.strftime(datefmt)
@@ -670,54 +700,99 @@ def update_projects(group_file_path, structure_file_path):
     if store_new_projects or store_removed_projects or store_updated_projects or \
         store_project_added_groups or store_project_removed_groups or \
         store_project_added_members or store_project_removed_members:
-        content += '\n\nh2. Projektbezogene Meldungen'
+        content += u'\n\nh2. Projektbezogene Meldungen\n'
 
-    if store_new_projects:
-        content += '\n\nh3. Neue Projekte beim Import (siehe #{ticket_id})\n\n* '.format(ticket_id=ticket_np) + '\n* '.join(store_new_projects)
+        if store_new_projects:
+            content += u'\n\nh3. Neue Projekte beim Import (siehe #{ticket_id})\n\n* '.format(ticket_id=ticket_np)
+            content += u'\n* '.join(store_new_projects)
 
-    if store_removed_projects:
-        content += '\n\nh3. Projekte die seit dem letzten Import in Fiona weggefallen sind (siehe #{ticket_id})\n\n* '.format(ticket_id=ticket_rp) + '\n* '.join(store_removed_projects)
+        if store_removed_projects:
+            content += u'\n\nh3. Projekte die seit dem letzten Import in Fiona weggefallen sind (siehe #{ticket_id})\n\n* '.format(ticket_id=ticket_rp) + u'\n* '.join(store_removed_projects)
 
-    if store_updated_projects:
-        content += '\n\nh3. Veränderungen an Webprojekt-Daten\n\n'
-        content += '|_.Projekt |_.Alter Titel |_.Neuer Titel |_.Alter Status |_.Neuer Status |_. Alte Stprachen |_. Neue Sprachen |\n'
-        for project, changes in store_updated_projects.iteritems():
-            content += '| {project} | {old_title} | {new_title} | {old_status} | {new_status} | {old_langs} | {new_langs} |\n'.format(
-                project=project,
-                old_title=changes.get('', ''),
-                new_title=changes.get('', ''),
-                old_status=changes.get('', ''),
-                new_status=changes.get('', ''),
-                old_langs=', '.join(changes.get('', [])),
-                new_langs=', '.join(changes.get('', [])),
-            )
+        if store_updated_projects:
+            content += u'\n\nh3. Veränderungen an Webprojekt-Daten\n\n'
+            content += u'|_.Projekt |_.Alter Titel |_.Neuer Titel |_.Alte URL |_.Neue URL |_.Alter Status |_.Neuer Status |_. Alte Stprachen |_. Neue Sprachen |\n'
+            for project, changes in store_updated_projects.iteritems():
+                content += u'| {project} | {old_title} | {new_title} | {old_homepage} | {new_homepage} | {old_status} | {new_status} | {old_langs} | {new_langs} |\n'.format(
+                    project=project,
+                    old_title=changes.get('title_old', ''),
+                    new_title=changes.get('title_new', ''),
+                    old_homepage=changes.get('hompage_old', ''),
+                    new_homepage=changes.get('hompage_new', ''),
+                    old_status=changes.get('status_old', ''),
+                    new_status=changes.get('status-new', ''),
+                    old_langs=', '.join(changes.get('lang_old', [])),
+                    new_langs=', '.join(changes.get('lang_new', [])),
+                )
 
-    if store_project_added_groups:
-        content += '\n\nh3. Zu Webprojekten hinzugefügte Gruppen\n\n'
-        for project, groups in store_project_added_groups.iteritems():
-            content += '* {project}\n** ' + '\n** '.join(groups)
+        if store_project_added_groups:
+            content += u'\n\nh3. Zu Webprojekten hinzugefügte Gruppen\n\n'
+            for project, groups in store_project_added_groups.iteritems():
+                content += u'* {project}\n** ' + u'\n** '.join(groups)
 
-    if store_project_removed_groups:
-        content += '\n\nh3. Aus Webprojekten entfernte Gruppen\n\n'
-        for project, groups in store_project_removed_groups.iteritems():
-            content += '* {project}\n** ' + '\n** '.join(groups)
+        if store_project_removed_groups:
+            content += u'\n\nh3. Aus Webprojekten entfernte Gruppen\n\n'
+            for project, groups in store_project_removed_groups.iteritems():
+                content += u'* {project}\n** ' + u'\n** '.join(groups)
 
-    if store_project_added_members:
-        content += '\n\nh3. Zu Webprojekten hinzugefügte Fiona-Kontakte\n\n'
-        for project, members in store_project_added_members.iteritems():
-            content += '\n* {project}\n'
-            for member in members:
-                l_contact = all_contacts.get(member)
-                if l_contact:
-                    content += '\n** {{contact_plain(%s)}}' % l_contact.id
-                else:
-                    content += '\n** ' + member
+        if store_project_added_members:
+            content += u'\n\nh3. Zu Webprojekten hinzugefügte Fiona-Kontakte\n\n'
+            for project, members in store_project_added_members.iteritems():
+                content += u'\n* {project}\n'
+                for member in members:
+                    l_contact = all_contacts.get(member)
+                    if l_contact:
+                        content += u'\n** {{contact_plain(%s)}}' % l_contact.id
+                    else:
+                        content += u'\n** ' + member
 
-    if store_project_removed_members:
-        content += '\n\nh3. Aus Weprojekten entfernte Fione-Kontakte\n\n'
-        for project, members in store_project_removed_members.iteritems():
-            content += '* {project}\n** ' + '\n** '.join(members)
+        if store_project_removed_members:
+            content += u'\n\nh3. Aus Weprojekten entfernte Fione-Kontakte\n\n'
+            for project, members in store_project_removed_members.iteritems():
+                content += u'* {project}\n** '.format(project=project) + '\n** '.join(members)
 
+    if store_new_groups or store_removed_groups or \
+        store_group_with_no_projects or store_group_with_no_members or \
+        store_new_members_in_group or store_removed_members_in_group:
+
+        content += u'\n\nh2. Gruppenbezogene Meldungen:\n\n'
+
+        if store_new_groups:
+            content += u'\n\nh3. Neue Gruppen beim Import (siehe #{ticket_id})\n\n* '.format(ticket_id=ticket_ng)
+            content += u'\n* '.join(store_new_groups)
+
+        if store_removed_groups:
+            content += u'\n\nh3. Gruppen die seit dem letzten Import in Fiona weggefallen sind\n\n* '
+            content += u'\n* '.join(store_removed_groups)
+
+        if store_group_with_no_projects:
+            content += u'\n\nh3. Folgende Gruppen haben sind keinem Projekt zugeordnet\n\n* '
+            content += u'\n* '.join(store_group_with_no_projects)
+
+        if store_group_with_no_projects:
+            content += u'\n\nh3. Folgenden Gruppen sind keine Mitglieder zugeordnet, sie wurden Auto-Fiona-Group-Temp-Ignore hinzugefügt\n\n* '
+            content += u'\n* '.join(store_group_with_no_members)
+
+        if store_new_members_in_group:
+            content += u'\n\nh3. Folgende Gruppen haben neue Mitglieder\n\n* '
+            for group, members in store_new_members_in_group:
+                content += u'\n* {group}\n** '.format(group=group) + '\n** '.join(members)
+
+        if store_removed_members_in_group:
+            content += u'\n\nh3. Aus folgenden Gruppen wurden Mitglieder entfernt\n\n* '
+            for group, members in store_removed_members_in_group:
+                content += u'\n* {group}\n** '.format(group=group) + u'\n** '.join(members)
+
+    if store_prefix_nonexisting_project or store_prefix_nonexisting_group:
+        content += u'\n\nh2. Verarbeitungsspezifische Meldungen bezüglich Prefix-Ignore\n'
+
+        if store_prefix_nonexisting_project:
+            content += "\n\nh3. Wiki-Page [[%s:%s]] enthält Projekte die nicht existieren\n\n* "
+            content += '\n* '.join(store_prefix_nonexisting_project)
+
+        if store_prefix_nonexisting_group:
+            content += "\n\nh3. Wiki-Page [[%s:%s]] enthält Gruppen die nicht existieren\n\n* "
+            content += '\n* '.join(store_prefix_nonexisting_group)
 
 
     redmine.wiki_page.create(
