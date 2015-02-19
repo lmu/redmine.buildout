@@ -83,10 +83,10 @@ issues = redmine.issue.filter(
 )
 
 for issue in issues:
-    if issue.start_date != today.isoformat():
-        log.info('Move Issue "%s" to Warteschlange', issue.id)
-        issue.status_id = warteschlange_id
-        issue.save()
+    log.info('Move Issue "%s" to Warteschlange', issue.id)
+    issue.status_id = warteschlange_id
+    issue.notes = 'AUTO-Move in Status Warteschlange'
+    issue.save()
 
 issues = redmine.issue.filter(
     status_id=warteschlange_id,
@@ -96,4 +96,5 @@ issues = redmine.issue.filter(
 for issue in issues:
     log.info('Move Issue "%s" to Todo', issue.id)
     issue.status_id = todo_id
+    issue.notes = 'AUTO-Move in Status To Do'
     issue.save()

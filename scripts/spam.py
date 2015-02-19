@@ -52,7 +52,7 @@ file_handler = logging.FileHandler(
 file_handler.setFormatter(my_formatter)
 log.addHandler(file_handler)
 # Set Basic Log-Level for this
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 
 # Timestamp for reporting
 datefmt = '%Y-%m-%d %H:%M'  # user timestamp.strf(datefmt) for output
@@ -78,7 +78,6 @@ new_tag = 'Neuer Kontakt'
 new_contacts = redmine.contact.filter(tags=new_tag)
 for contact in new_contacts:
 
-    #import ipdb; ipdb.set_trace()
     log.debug(
         u'Found Contact "%s" in Tag: "%s" with e-mail: %s and tags: %s',
         str(contact.id),
@@ -94,22 +93,24 @@ for contact in new_contacts:
             new_tag,
             ', '.join(contact.emails)
         )
-        contact.tag_list = [spam_tag.lower(),'Test']
-        log.info('Changes: %s', pformat(contact._changes))
-        contact.save()
+        #contact.tag_list = [spam_tag]
+        redmine.contact.update(
+            resource_id=contact.id,
+            tag_list=[spam_tag]
+        )
+        #log.debug('Changes: %s', pformat(contact._changes))
+        #contact.save()
 
         contact.project.add('spam')
 
         contact = contact.refresh()
         projects = contact.projects
         for project in projects:
-            #project = project.refresh()
-            #import ipdb; ipdb.set_trace()
             identifier = project.refresh().identifier
             if identifier != 'spam':
                 log.info('Removed from project: %s', identifier)
                 contact.project.remove(identifier)
         log.info(
-            'Contact "%s" moved into project: spam',
+            'Contact "%s" move into project: "spam" finished',
             contact.id
         )
