@@ -20,7 +20,7 @@ elif hostname.startswith('Pumukel-MacBook'):
         '/usr/local/Plone/buildout-cache/eggs/ipdb-0.8-py2.7.egg',
         '/usr/local/Plone/buildout-cache/eggs/requests-2.5.1-py2.7.egg',
     ]
-elif hostname == 'redmine1':
+elif hostname.startswith('redmine'):
     sys.path[0:0] = [
         '/data/buildout-cache/eggs/python_redmine-1.0.2-py2.6.egg',
         '/data/buildout-cache/eggs/ipython-1.2.1-py2.6.egg',
@@ -28,9 +28,7 @@ elif hostname == 'redmine1':
         '/data/buildout-cache/eggs/requests-2.3.0-py2.6.egg',
     ]
 
-# from ConfigParser import SafeConfigParser
 from redmine import Redmine
-from pprint import pformat
 
 import datetime
 import logging
