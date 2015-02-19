@@ -32,7 +32,13 @@ import os.path
 import time
 
 
-def update_projects(group_file_path, structure_file_path):
+def update_projects(_group_file_path, _structure_file_path):
+    """
+    Update Script to import Fiona CMS data into Redmine
+
+    :param _group_file_path: Path to a CSV-File of style Group-Name;Group-Member,Group-Member,...
+    :param _structure_file_path: Path to a CSV-File of style Fiona-Name;Fiona-Pfad;Playland-Titel;Erstellungsdatum;Status;URL;Sprache;Fiona-Group-Name,Fiona-Group-Name,...
+    """
 
     # Set up log handler for Fiona Redmine Import:
     log = logging.getLogger('Redmine-Fiona-Import-Logger')
@@ -220,8 +226,8 @@ def update_projects(group_file_path, structure_file_path):
         time.sleep(60)
 
     # 1.2. Read NEW Fionagruppen and group membership data from input file
-    log.debug("Try to open file: %s", group_file_path)
-    with open(group_file_path, 'r') as csvfile_groups:
+    log.debug("Try to open file: %s", _group_file_path)
+    with open(_group_file_path, 'r') as csvfile_groups:
         reader = csv.DictReader(csvfile_groups, delimiter=';', quotechar='"')
 
         for row in reader:
@@ -300,7 +306,7 @@ def update_projects(group_file_path, structure_file_path):
 
     # 2. Import Fiona Stucture
     log.info('Begin: Import Step of Fiona Structure File')
-    with open(structure_file_path, 'r') as csvfile_structure:
+    with open(_structure_file_path, 'r') as csvfile_structure:
         reader = csv.DictReader(csvfile_structure, delimiter=';', quotechar='"')
 
         # Fiona-Name;Fiona-Pfad;Playland-Titel;Erstellungsdatum;Status;URL;Sprache;Fionagruppe;  # NOQA
@@ -426,10 +432,10 @@ def update_projects(group_file_path, structure_file_path):
         project_id=rmaster_project.id)
 
     wiki_group_temp_ignore_text = wiki_group_temp_ignore.text
-    # TODO
+
     for elem in wiki_common_footer_elems:
-        wiki_text = wiki_text.replace(elem, '')
-    wiki_text = wiki_text.strip()
+        wiki_group_temp_ignore_text = wiki_group_temp_ignore_text.replace(elem, '')
+    wiki_group_temp_ignore_text = wiki_group_temp_ignore_text.strip()
 
     for line in wiki_group_temp_ignore_text:
         if line.startswith('* '):
@@ -445,7 +451,7 @@ def update_projects(group_file_path, structure_file_path):
             store_group_with_no_members.append(l_group_key)
         if l_group_value['projects'] and l_group_value['members']:
             for project in l_group_value['projects']:
-                store_project_data[project] = store_project_data.get(project, []).append(l_group_key)  # NOQA
+                store_project_data[project] = store_project_data.get(project, []).append(l_group_key)
 
     # 3.1. Compare old and new Fiona Group Data
     for group_entry in new_fgm_data:
@@ -490,7 +496,7 @@ def update_projects(group_file_path, structure_file_path):
                         l_project_contacts_cks.append(ck)
         l_fiona_contacts_ck = []
         for group in groups:
-            l_fiona_contacts_ck.extend(new_fgm_data[group].get('members',[]))
+            l_fiona_contacts_ck.extend(new_fgm_data[group].get('members', []))
 
         l_new_contacts = set(l_fiona_contacts_ck) - set(l_project_contacts_cks)
         l_removed_contacts = set(l_project_contacts_cks) - set(l_fiona_contacts_ck)
@@ -698,8 +704,8 @@ def update_projects(group_file_path, structure_file_path):
     )
     # Project Specific Logs
     if store_new_projects or store_removed_projects or store_updated_projects or \
-        store_project_added_groups or store_project_removed_groups or \
-        store_project_added_members or store_project_removed_members:
+       store_project_added_groups or store_project_removed_groups or \
+       store_project_added_members or store_project_removed_members:
         content += u'\n\nh2. Projektbezogene Meldungen\n'
 
         if store_new_projects:
@@ -752,8 +758,8 @@ def update_projects(group_file_path, structure_file_path):
                 content += u'* {project}\n** '.format(project=project) + '\n** '.join(members)
 
     if store_new_groups or store_removed_groups or \
-        store_group_with_no_projects or store_group_with_no_members or \
-        store_new_members_in_group or store_removed_members_in_group:
+       store_group_with_no_projects or store_group_with_no_members or \
+       store_new_members_in_group or store_removed_members_in_group:
 
         content += u'\n\nh2. Gruppenbezogene Meldungen:\n\n'
 
