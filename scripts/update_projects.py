@@ -168,7 +168,7 @@ def update_projects(_group_file_path, _structure_file_path):
                 if field.name == 'Campus-Kennung':
                     ck_n = field.value.strip().lower()
                     if ck_n and ck_n == ck:
-                        log.debug('Contact [%s] found, has no formal Camus-Kennung but informal placeholder "%s"', contact.id, ck)
+                        log.debug('Contact [%s] found, has no formal Campus-Kennung but informal placeholder "%s"', contact.id, ck)
                     elif ck_n:
                         ck = ck_n
                     else:
@@ -527,6 +527,7 @@ def update_projects(_group_file_path, _structure_file_path):
                 else:
                     content += '* {ck}'.format(id=member_ck)
 
+# TODO Falsche ebene
                 try:
                     redmine.wiki_page.get('Fionagruppen', project_id=l_project.id)
                     redmine.wiki_page.update('Fionagruppen',
