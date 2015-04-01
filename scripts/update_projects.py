@@ -7,15 +7,15 @@ import socket
 hostname = socket.gethostname()
 if hostname == 'Pumukel-GNU-Tablet':
     sys.path[0:0] = [
-        '/usr/local/Plone/buildout-cache/eggs/python_redmine-1.0.1-py2.7.egg',
-        '/usr/local/Plone/buildout-cache/eggs/ipython-1.2.1-py2.7.egg',
+        '/usr/local/Plone/buildout-cache/eggs/python_redmine-1.1.1-py2.7.egg',
+        '/usr/local/Plone/buildout-cache/eggs/ipython-3.0.0-py2.7.egg',
         '/usr/local/Plone/buildout-cache/eggs/ipdb-0.8-py2.7.egg',
-        '/usr/local/Plone/buildout-cache/eggs/requests-2.3.0-py2.7.egg',
+        '/usr/local/Plone/buildout-cache/eggs/requests-2.6.0-py2.7.egg',
     ]
 elif hostname.startswith('redmine'):
     sys.path[0:0] = [
-        '/data/buildout-cache/eggs/python_redmine-1.0.1-py2.6.egg',
-        '/data/buildout-cache/eggs/ipython-1.2.1-py2.6.egg',
+        '/data/buildout-cache/eggs/python_redmine-1.1.1-py2.6.egg',
+        #'/data/buildout-cache/eggs/ipython-1.2.1-py2.6.egg',
         # '/data/buildout-cache/eggs/ipdb-0.8-py2.6.egg',
         '/data/buildout-cache/eggs/requests-2.3.0-py2.6.egg',
     ]
@@ -31,6 +31,10 @@ import logging
 import os.path
 import time
 
+import ipdb
+
+ca_certs = "/etc/ssl/certs/ca-certificates.crt"
+
 
 def update_projects(_group_file_path, _structure_file_path):
     """
@@ -39,7 +43,6 @@ def update_projects(_group_file_path, _structure_file_path):
     :param _group_file_path: Path to a CSV-File of style Group-Name;Group-Member,Group-Member,...
     :param _structure_file_path: Path to a CSV-File of style Fiona-Name;Fiona-Pfad;Playland-Titel;Erstellungsdatum;Status;URL;Sprache;Fiona-Group-Name,Fiona-Group-Name,...
     """
-
     # Set up log handler for Fiona Redmine Import:
     log = logging.getLogger('Redmine-Fiona-Import-Logger')
     my_formatter = logging.Formatter(
@@ -50,13 +53,14 @@ def update_projects(_group_file_path, _structure_file_path):
     stdout_hanlder.setFormatter(my_formatter)
     log.addHandler(stdout_hanlder)
     file_handler = logging.FileHandler(
-        'fione_import.log',
+        'fiona_import.log',
         mode='w',
         encoding='utf-8')
     file_handler.setFormatter(my_formatter)
     log.addHandler(file_handler)
     # Set Basic Log-Level for this
     log.setLevel(logging.DEBUG)
+    #log.setLevel(logging.INFO)
 
     # Timestamp for reporting
     datefmt = '%Y-%m-%d %H:%M'  # user timestamp.strf(datefmt) for output
@@ -67,6 +71,7 @@ def update_projects(_group_file_path, _structure_file_path):
     # Contact related
     store_new_users = {}  # {campus_kennung : {'projects': [], 'groups': []}] <-- from Fiona group file
     store_users_without_campus_kennung = {}  # from all_contacts --> { contact_id : { name: _, email: -, projects: [] }
+    store_duplicated_campus_kennung = []  # [id, id, ...]
     # project related
     store_new_projects = []  # [project_identifiers] <-- from Fiona structure file
     store_removed_projects = []  # [project_identfier]
@@ -108,13 +113,20 @@ def update_projects(_group_file_path, _structure_file_path):
 
     # Setup Redmine-Connector:
     redmine = Redmine(
-        # 'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
+        #'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
         'https://localhost/internetdienste/',
         # 'http://localhost/internetdienste/',
         # username='admin',
         # password='admin',
         key='6824fa6b6ad10fa4828e003faf793a2260688486',
-        requests={'verify': False})
+        requests={
+            'verify': False,
+            #'verify': True,
+            #'cert_reqs': 'CERT_REQUIRED', 'ca_certs': ca_certs,
+            #'cert': (ca_certs, 'keys.key')
+            #'cert': ('server_cert.pem', 'server_cert.key'),
+        }
+    )
 
     log.info("Connecting to Redmine Instance %s ", redmine.url)
 
@@ -135,6 +147,7 @@ def update_projects(_group_file_path, _structure_file_path):
     cf_hostname_id = None
     cf_analytic_tool_id = None
     cf_analytic_url_id = None
+    cf_campus_kennung_id = None
 
     for cf in custom_fields:
         if cf.name == 'Sprache':
@@ -149,6 +162,8 @@ def update_projects(_group_file_path, _structure_file_path):
             cf_analytic_tool_id = cf.id
         elif cf.name == 'Analytic-URL':
             cf_analytic_url_id = cf.id
+        elif cf.name == 'Campus-Kennung':
+            cf_campus_kennung_id = cf.id
 
     log.debug(u"Custom Field ID für Sprache: %s", cf_lang_id)
     log.debug(u"Custom Field ID für Status: %s", cf_status_id)
@@ -156,32 +171,64 @@ def update_projects(_group_file_path, _structure_file_path):
     log.debug(u"Custom Field ID für Hostname: %s", cf_hostname_id)
     log.debug(u"Custom Field ID für Analytic-Tool: %s", cf_analytic_tool_id)
     log.debug(u"Custom Field ID für Analytic-URL: %s", cf_analytic_url_id)
+    log.debug(u"Custom Field ID für Campus-Kennung: %s", cf_campus_kennung_id)
 
+    all_contacts = {}
     # get all existing Contacts from Redmine Instance:
     _all_contacts = redmine.contact.all()
-    all_contacts = {}
     for contact in _all_contacts:
-        if not contact.is_company:
+        contact = contact.refresh()
+        if not getattr(contact, 'is_company', False):
             fields = contact.custom_fields
-            ck = 'keine_' + contact.last_name.strip().lower()
+            ck = 'keine_' + '_'.join([contact.first_name.strip().lower(), contact.last_name.strip().lower(), str(contact.id)])
+            update = False
+            no_ck = False
             for field in fields:
                 if field.name == 'Campus-Kennung':
                     ck_n = field.value.strip().lower()
                     if ck_n and ck_n == ck:
-                        log.debug('Contact [%s] found, has no formal Campus-Kennung but informal placeholder "%s"', contact.id, ck)
+                        log.debug('Contact [%s] found, has no formal Campus-Kennung but informal placeholder "%s" that is persitent', contact.id, ck)
+                        no_ck = True
+                    elif ck_n.lower() in ['', '-', 'keine', 'ohne']:
+                        log.debug('Contact [%s] found, has no formal persistent Campus-Kennung stored, save informal placeholder "%s"', contact.id, ck)
+                        no_ck = True
+                        update = True
                     elif ck_n:
                         ck = ck_n
                     else:
                         log.debug('Contact [%s] found, has no Campus-Kennung', contact.id)
-                        store_users_without_campus_kennung[contact.id] = {
-                            'name': contact.last_name,
-                            'email': contact.emails,
-                            'projects': contact.projects
-                        }
+                        no_ck = True
+                        update = True
+
+            if no_ck and not 'Checked-SPAM' in contact.tag_list:
+                store_users_without_campus_kennung[contact.id] = {
+                    'name': contact.last_name,
+                    'email': contact.emails,
+                    'projects': contact.projects
+                }
+            if update:
+                contact.custom_fields = [{'id': field.id, 'value': ck if field.name == 'Campus-Kennung' else field.value} for field in fields]
+                #contact.custom_fields = [{'id': cf_campus_kennung_id, 'value': ck}]
+                contact.is_company = False
+                log.info('Update Contact data of Contact-ID: {id} with changes: {changes}'.format(id=contact.id, changes=contact._changes))
+                contact.save()
             log.debug("add %s to all_contacts", ck)
             all_contacts[ck] = contact
+        else:
+            # Company
+            ck = 'company_' + contact.first_name.strip().lower() + '_' + str(contact.id)
+            log.debug("add company %s to all_contacts", ck)
+            all_contacts[ck] = contact
 
+    _all_rc_ids = set([ccontact.id for ccontact in _all_contacts])
+    _all_ckc_ids = set([ccontact.id for ccontact in all_contacts.values()])
+
+    diff = _all_rc_ids - _all_ckc_ids
+    store_duplicated_campus_kennung = sorted([elem for elem in diff])
+
+    log.info(u"Anzahl an Kontakten aus Redmine: %s", str(len(_all_contacts)))
     log.info(u"Anzahl an bekannten Kontakten: %s", str(len(all_contacts)))
+    log.info(u"Anzahl an Unterschieden: %s; Fehlende IDs: %s", str(len(diff)), str(store_duplicated_campus_kennung))
 
     # Proceed Import Steps:
     # 1. Read Fionagruppen and group membership
@@ -225,6 +272,8 @@ def update_projects(_group_file_path, _structure_file_path):
     if log.getEffectiveLevel() == logging.DEBUG:  # make it possible to read debug message of wiki_text
         time.sleep(60)
 
+    ipdb.set_trace()
+
     # 1.2. Read NEW Fionagruppen and group membership data from input file
     log.debug("Try to open file: %s", _group_file_path)
     with open(_group_file_path, 'r') as csvfile_groups:
@@ -267,6 +316,8 @@ def update_projects(_group_file_path, _structure_file_path):
 
     wiki_prefix_text = wiki_prefix.text
 
+    ipdb.set_trace()
+
     log.debug(u"Content of 'Auto-Fiona-Gruppen-Prefix-Zuordnung' Wiki Seite:\n%s", pformat(wiki_prefix_text))
 
     for row in wiki_prefix_text.splitlines():
@@ -303,6 +354,8 @@ def update_projects(_group_file_path, _structure_file_path):
                         store_prefix_nonexisting_group.append(group_name)
 
     log.info('Finished: Auto-Fiona-Gruppen-Prefix-Zuordnung Step')
+
+    ipdb.set_trace()
 
     # 2. Import Fiona Stucture
     log.info('Begin: Import Step of Fiona Structure File')
@@ -399,6 +452,35 @@ def update_projects(_group_file_path, _structure_file_path):
                             {'id': cf_analytic_tool_id, 'value': ''},
                             {'id': cf_analytic_url_id, 'value': ''},
                         ])
+                elif len(path_list) > 3:
+                    parent_project_name = '-'.join(path_list[2:-1])
+                    try:
+                        parent_project = redmine.project.get(parent_project_name)
+                    except ResourceNotFoundError:
+                        parent_project = redmine.project.get(path_list[1])
+                        parent_project = redmine.project.create(
+                            name=parent_project_name,
+                            identifier=parent_project_name,
+                            homepage='',
+                            is_public=False,
+                            inherit_members=True,
+                            parent_id=parent_project.id)
+                    myproject = redmine.project.create(
+                        name=fiona_title,
+                        identifier=fiona_id,
+                        homepage=url,
+                        is_public=False,
+                        inherit_members=True,
+                        parent_id=parent_project.id,
+                        # Custom Fields
+                        custom_fields=[
+                            {'id': cf_status_id, 'value': row.get('Status', '')},  # NOQA
+                            {'id': cf_lang_id, 'value': row.get('Sprache', '')},
+                            {'id': cf_host_id, 'value': ''},
+                            {'id': cf_hostname_id, 'value': ''},
+                            {'id': cf_analytic_tool_id, 'value': ''},
+                            {'id': cf_analytic_url_id, 'value': ''},
+                        ])
 
             # Add project to group list
             if user_data:
@@ -411,6 +493,8 @@ def update_projects(_group_file_path, _structure_file_path):
                              'identifier': myproject.identifier})
 
     # 3. Compare and handle difference on Fiona Data:
+
+    ipdb.set_trace()
 
     # 3.1. Remove Ignored Groups from New Fiona Group Data:
     log.info('Begin: Auto-Fiona-Gruppen-Prefix-Zuordnung Step')
@@ -442,6 +526,8 @@ def update_projects(_group_file_path, _structure_file_path):
             l_group = line[2:]
             if l_group in new_fgm_data:
                 del new_fgm_data[l_group]
+
+    ipdb.set_trace()
 
     # Transform new_fgm_data into project_group-mapping
     for l_group_key, l_group_value in new_fgm_data.iteritems():
@@ -475,6 +561,7 @@ def update_projects(_group_file_path, _structure_file_path):
     if store_removed_groups:
         log.warn('Found removed groups: %s', ', '.join(store_removed_groups))
 
+    ipdb.set_trace()
     # 3.2. Write Fionagroup Information into Webproject
     for project_key, groups in store_project_data.iteritems():
         l_project = redmine.project.get(project_key)
@@ -510,6 +597,9 @@ def update_projects(_group_file_path, _structure_file_path):
                     l_contact.project.add(project_key)
 
         if l_removed_contacts:
+
+            ipdb.set_trace()
+
             for l_ck in l_removed_contacts:
                 l_contact = all_contacts.get(l_ck)
                 if l_contact:
@@ -528,16 +618,16 @@ def update_projects(_group_file_path, _structure_file_path):
                     content += '* {ck}'.format(id=member_ck)
 
 # TODO Falsche ebene
-                try:
-                    redmine.wiki_page.get('Fionagruppen', project_id=l_project.id)
-                    redmine.wiki_page.update('Fionagruppen',
-                                             project_id=l_project.id,
-                                             title='Fionagruppen',
-                                             text=content)
-                except ResourceNotFoundError:
-                    redmine.wiki_page.create(project_id=l_project.id,
-                                             title='Fionagruppen',
-                                             text=content)
+        try:
+            redmine.wiki_page.get('Fionagruppen', project_id=l_project.id)
+            redmine.wiki_page.update('Fionagruppen',
+                                     project_id=l_project.id,
+                                     title='Fionagruppen',
+                                     text=content)
+        except ResourceNotFoundError:
+            redmine.wiki_page.create(project_id=l_project.id,
+                                     title='Fionagruppen',
+                                     text=content)
 
     # Write datastore for fiona group information
     wiki_fgm.text = '<pre><code class="json">{json}</code></pre>'.format(pformat(json.dumps(new_fgm_data)))
@@ -552,9 +642,7 @@ def update_projects(_group_file_path, _structure_file_path):
 
     store_no_fiona_contacts = all_contacts_ck - set(store_fiona_contacts)
 
-
-
-
+    ipdb.set_trace()
 
     # Process all Projects and check if wegweiser exists and create it if not
     _all_projects = redmine.project.all()
@@ -585,7 +673,6 @@ def update_projects(_group_file_path, _structure_file_path):
         if identifier not in store_fiona_projects and identifier not in store_fiona_special_projects:
             store_no_webproject_projects.append(identifier)
 
-
     # 4. Fehlerprotokolle
     support_project = redmine.project.get('support')
     office_project = redmine.project.get('office')
@@ -608,6 +695,7 @@ def update_projects(_group_file_path, _structure_file_path):
     ticket_nmg = 0  # Ticket ID: Group with new Members
     ticket_nu = 0  # Ticket ID: New Users
     ticket_nck = 0  # Ticket ID: Users with Campus-Kennung not set
+    ticket_dck = 0  # Ticket ID: Potential duplicated Campus-Kennung
 
     # 4.1a. New User (Campus-Kennung) not known
     if store_new_users:
@@ -642,7 +730,17 @@ def update_projects(_group_file_path, _structure_file_path):
             )
         ticket_nck = redmine.issue.create(
             project_id=support_project.id,
-            subject='Kontak ohne Campus-Kennung bei Import ' + str(today.isoformat()),
+            subject='Kontakt ohne Campus-Kennung bei Import ' + str(today.isoformat()),
+            description=error_message,
+            assigned_to_id=support_team.id)
+
+    if store_duplicated_campus_kennung:
+        error_message = "Folgende Kontakte haben eine bereits verwendete Campus-Kennung, Möglicher Kontakt-Duplikat:\n\n"
+        for user_id in store_duplicated_campus_kennung:
+            error_message += '* {{contact_plain(%s)}}\n' % user_id
+        ticket_dck = redmine.issue.create(
+            project_id=support_project.id,
+            subject='Kontakt mit Campus-Kennung Duplikat bei Import ' + str(today.isoformat()),
             description=error_message,
             assigned_to_id=support_team.id)
 
@@ -808,7 +906,7 @@ def update_projects(_group_file_path, _structure_file_path):
 
     redmine.wiki_page.create(
         project_id=rmaster_project.id,
-        title='Fiona-Import-Log-{date}'.format(today.isoformat()),
+        title='Fiona-Import-Log-{date}'.format(date=today.isoformat()),
         text=content
     )
 
