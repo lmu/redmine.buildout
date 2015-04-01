@@ -258,21 +258,24 @@ def update_projects(_group_file_path, _structure_file_path):
     wiki_common_footer_elems = ['{{fnlist}}',
                                 '<div id="wiki_extentions_footer">',
                                 '---',
-                                '{{lastupdated_at}} von {{lastupdated_by}}'
+                                '{{lastupdated_at}} von {{lastupdated_by}}',
                                 '</div>',
                                 '<pre><code class="json">',
                                 '</code></pre>']
+
     for elem in wiki_common_footer_elems:
+        log.debug('Remove %s from wiki_text', elem)
         wiki_text = wiki_text.replace(elem, '')
+        if elem in wiki_text:
+            log.error('Not allowed string "%s" in wiki_text found', elem)
     wiki_text = wiki_text.strip()
+    #log.debug('Try to load wiki_text:\n%s', pformat(wiki_text))
     old_fgm_data = json.loads(wiki_text)
 
     log.debug(u"Content of Auto-Fiona-Gruppen-Mitglieder Wiki Seite read into JSON:\n%s", pformat(old_fgm_data))
 
     if log.getEffectiveLevel() == logging.DEBUG:  # make it possible to read debug message of wiki_text
-        time.sleep(60)
-
-    ipdb.set_trace()
+        time.sleep(10)
 
     # 1.2. Read NEW Fionagruppen and group membership data from input file
     log.debug("Try to open file: %s", _group_file_path)
@@ -316,8 +319,6 @@ def update_projects(_group_file_path, _structure_file_path):
 
     wiki_prefix_text = wiki_prefix.text
 
-    ipdb.set_trace()
-
     log.debug(u"Content of 'Auto-Fiona-Gruppen-Prefix-Zuordnung' Wiki Seite:\n%s", pformat(wiki_prefix_text))
 
     for row in wiki_prefix_text.splitlines():
@@ -333,7 +334,8 @@ def update_projects(_group_file_path, _structure_file_path):
                         for prefix_project in prefix_projects:
                             try:
                                 project = redmine.project.get(prefix_project.strip())
-                                new_fgm_data[c_group_name]['projects'] = new_fgm_data[c_group_name].get('projects', []).append(project.identifier)
+                                new_fgm_data[c_group_name]['projects'] = new_fgm_data[c_group_name].get('projects', []).append(
+                                    {'id': project.id, 'fiona_id': project.identifier})
                                 log.debug('Add project: "%s" to group: "%s"', project.identifier, c_group_name)
                             except ResourceNotFoundError:
                                 log.error(u'No Project with id "%s" found', prefix_project)
@@ -355,8 +357,6 @@ def update_projects(_group_file_path, _structure_file_path):
 
     log.info('Finished: Auto-Fiona-Gruppen-Prefix-Zuordnung Step')
 
-    ipdb.set_trace()
-
     # 2. Import Fiona Stucture
     log.info('Begin: Import Step of Fiona Structure File')
     with open(_structure_file_path, 'r') as csvfile_structure:
@@ -365,7 +365,7 @@ def update_projects(_group_file_path, _structure_file_path):
         # Fiona-Name;Fiona-Pfad;Playland-Titel;Erstellungsdatum;Status;URL;Sprache;Fionagruppe;  # NOQA
         for row in reader:
             fiona_id = row.get('Fiona-Name')
-            fiona_title = row.get('Playland-Titel')
+            fiona_title = unicode(row.get('Playland-Titel'))
             path = row.get('Fiona-Pfad')
             url = row.get('URL')
             path_list = path.split('/')
@@ -410,12 +410,14 @@ def update_projects(_group_file_path, _structure_file_path):
                     new_fields.append({'id': field.id, 'value': fval})
 
                 myproject.custom_fields = new_fields
+                log.debug('Changes on Project: %s', myproject._changes)
                 myproject.save()
                 if l_message:
                     store_updated_projects[myproject.identifier] = l_message
 
             except ResourceNotFoundError:
                 log.info('No Project with identifier: "%s" found, will be created', fiona_id)
+                ipdb.set_trace()
                 store_new_projects.append(fiona_id)
                 if len(path_list) == 2:
                     myproject = redmine.project.create(
@@ -488,7 +490,7 @@ def update_projects(_group_file_path, _structure_file_path):
                 for group in groups:
                     group = group.strip()
                     if group != '' and group != 'all_users':
-                        new_fgm_data[group]['projects'].append(
+                        new_fgm_data[group]['projects'] = new_fgm_data[group].get('projects', []).append(
                             {'id': myproject.id,
                              'identifier': myproject.identifier})
 
