@@ -22,6 +22,7 @@ elif hostname.startswith('redmine'):
 
 from redmine import Redmine
 from redmine.exceptions import ResourceNotFoundError
+from redmine.exceptions import ServerError
 from pprint import pformat
 
 import csv
@@ -30,6 +31,7 @@ import json
 import logging
 import os.path
 import time
+import traceback
 #import ipdb
 
 ca_certs = "/etc/ssl/certs/ca-certificates.crt"
@@ -55,22 +57,15 @@ def update_projects(_group_file_path, _structure_file_path):
     stdout_hanlder = logging.StreamHandler(sys.stdout)
     stdout_hanlder.setFormatter(my_formatter)
     stdout_hanlder.setLevel(logging.DEBUG)
-
     log.addHandler(stdout_hanlder)
-    file_handler_info = logging.FileHandler(
-        'fiona_import_info.log',
+
+    file_handler = logging.FileHandler(
+        'fiona_import.log',
         mode='w',
         encoding='utf-8')
-    file_handler_info.setFormatter(my_formatter)
-    file_handler_info.setLevel(logging.INFO)
-    log.addHandler(file_handler_info)
-    file_handler_debug = logging.FileHandler(
-        'fiona_import_debug.log',
-        mode='w',
-        encoding='utf-8')
-    file_handler_debug.setFormatter(my_formatter)
-    file_handler_debug.setLevel(logging.DEBUG)
-    log.addHandler(file_handler_debug)
+    file_handler.setFormatter(my_formatter)
+    file_handler.setLevel(logging.DEBUG)
+    log.addHandler(file_handler)
 
     # Timestamp for reporting
     datefmt = '%Y-%m-%d %H:%M'  # user timestamp.strf(datefmt) for output
@@ -645,7 +640,7 @@ def update_projects(_group_file_path, _structure_file_path):
                         log.error(u'Could not remove %s - %s from project: %s', l_contact.id. l_ck, project_key)
 
         # write wiki-page fionagruppen
-        content = u'h1. Fionagruppen\n\n'
+        content = u'h1. Fionagruppen\n'
 
         for group in groups or []:
             content += u'\n\nh2. {group}\n\n'.format(group=group)
@@ -670,15 +665,25 @@ def update_projects(_group_file_path, _structure_file_path):
                                      project_id=l_project.id,
                                      title='Fionagruppen',
                                      text=content)
+        except ServerError as e:
+            log.error(e)
+            log.error('tried to update Fionaroups Wikipage on project "%s" with content:\n%s', l_project.identifier, content)
         except ResourceNotFoundError:
             redmine.wiki_page.create(project_id=l_project.id,
                                      title='Fionagruppen',
                                      text=content)
 
     # Write datastore for fiona group information
-    wiki_fgm.text = '<pre><code class="json">{json}</code></pre>'.format(json=json.dumps(new_fgm_data, indent=2))
-    wiki_fgm.comment = 'Import from ' + str(today.isoformat())
-    wiki_fgm.save()
+    try:
+        wiki_fgm.text = u'<pre><code class="json">{json}</code></pre>'.format(json=json.dumps(new_fgm_data, indent=2))
+        wiki_fgm.comment = 'Import from ' + str(today.isoformat())
+        wiki_fgm.save()
+    except ServerError as e:
+        log.error(e)
+        log.error(traceback.format_exc())
+        log.error(sys.exc_info()[0])
+        log.error('Could not save: \n%s', json.dumps(new_fgm_data, indent=2))
+
 
     for values in new_fgm_data.itervalues():
         store_fiona_contacts.extend(values.get('members', []) or [])
