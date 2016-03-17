@@ -126,7 +126,8 @@ def update_projects(_group_file_path, _structure_file_path):
     # Setup Redmine-Connector:
     redmine = Redmine(
         #'https://www.scm.verwaltung.uni-muenchen.de/internetdienste/',
-        'https://localhost/internetdienste/',
+        #'https://localhost/internetdienste/',
+        'https://localhost/spielwiese',
         # 'http://localhost/internetdienste/',
         # username='admin',
         # password='admin',
